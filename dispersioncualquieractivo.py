@@ -91,7 +91,7 @@ percentiles = [95, 75, 50, 25, 5]
 percentile_values = np.percentile(data['Dispersion_Percent'].dropna(), percentiles)
 
 plt.figure(figsize=(10, 6))
-sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color='blue', bins=30)
+sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color='blue', bins=100)
 
 # Add percentile lines
 for percentile, value in zip(percentiles, percentile_values):
