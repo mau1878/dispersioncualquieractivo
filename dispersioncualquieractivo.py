@@ -139,3 +139,44 @@ plt.title(f'Dispersion Percentage of {ticker} ({close_price_type}) Close Price f
 plt.xlabel('Dispersion (%)')
 plt.ylabel('Frequency')
 st.pyplot(plt)
+
+# User input for the number of bins in the histogram
+num_bins = st.slider("Select the number of bins for the histogram", min_value=10, max_value=100, value=50)
+
+# User input for the color of the histogram
+hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
+
+# Plotly Histogram: Dispersion Percent with User Customization
+fig_hist = go.Figure()
+
+# Add the histogram trace
+fig_hist.add_trace(
+    go.Histogram(
+        x=data['Dispersion_Percent'].dropna(),
+        nbinsx=num_bins,
+        marker_color=hist_color,
+        opacity=0.75
+    )
+)
+
+# Add percentile lines as vertical shapes
+for percentile, value in zip(percentiles, percentile_values):
+    fig_hist.add_vline(
+        x=value,
+        line=dict(color="red", width=2, dash="dash"),
+        annotation_text=f'{percentile}th percentile',
+        annotation_position="top"
+    )
+
+# Update layout for interactivity and customization
+fig_hist.update_layout(
+    title=f"Customizable Histogram of Dispersion Percentage for {ticker} ({close_price_type})",
+    xaxis_title="Dispersion (%)",
+    yaxis_title="Frequency",
+    bargap=0.1,  # Gap between bars
+    template="plotly_dark",
+    showlegend=False
+)
+
+# Display the interactive Plotly histogram
+st.plotly_chart(fig_hist)
