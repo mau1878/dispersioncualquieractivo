@@ -17,11 +17,13 @@ sma_window = st.number_input("Enter the SMA window (number of days)", min_value=
 start_date = st.date_input("Select the start date", value=pd.to_datetime('2000-01-01'))
 end_date = st.date_input("Select the end date", value=pd.to_datetime('today'))
 
-# Ensure the start date is no later than the most recent allowed date
-start_date = max(pd.to_datetime('2000-01-01'), min(start_date, pd.to_datetime('today')))
+# Ensure the start date is no later than today (Streamlit automatically restricts future dates)
+start_date = pd.to_datetime(start_date)
+end_date = pd.to_datetime(end_date)
 
 # User input for close price type
 close_price_type = st.selectbox("Select Close Price Type", ["Unadjusted", "Adjusted"])
+
 
 # Check if user wants to apply the ratio adjustment
 apply_ratio = st.checkbox("Adjust price by YPFD.BA/YPF ratio")
