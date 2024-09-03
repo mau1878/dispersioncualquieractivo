@@ -44,6 +44,10 @@ if adjust_price:
     # Adjust the price of the selected ticker by dividing it by the ratio
     data[price_column] = data[price_column] / ratio
 
+    # Handle NaN values in the adjusted price (forward fill or drop them)
+    data[price_column].ffill(inplace=True)
+    data.dropna(subset=[price_column], inplace=True)
+
 # Calculate the user-defined SMA
 sma_label = f'{sma_window}_SMA'
 data[sma_label] = data[price_column].rolling(window=sma_window).mean()
