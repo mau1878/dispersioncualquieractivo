@@ -156,6 +156,7 @@ num_bins = st.slider("Select the number of bins for the histogram", min_value=10
 hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
 
 # Plotly Histogram: Dispersion Percent with User Customization
+# Plotly Histogram: Dispersion Percent with User Customization
 fig_hist = go.Figure()
 
 # Add the histogram trace
@@ -174,7 +175,11 @@ for percentile, value in zip(percentiles, percentile_values):
         x=value,
         line=dict(color="red", width=2, dash="dash"),
         annotation_text=f'{percentile}th percentile',
-        annotation_position="top"
+        annotation_position="top",
+        annotation=dict(
+            textangle=-90,  # Rotate text to vertical
+            font=dict(color="red")
+        )
     )
 
 # Update layout for interactivity and customization
