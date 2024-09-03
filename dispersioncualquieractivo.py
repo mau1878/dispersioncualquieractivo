@@ -14,8 +14,20 @@ ticker = st.text_input("Enter the ticker symbol", value="GGAL")
 sma_window = st.number_input("Enter the SMA window (number of days)", min_value=1, value=21)
 
 # User input for date range with default start date set to January 1, 2000
-start_date = st.date_input("Select the start date", value=pd.to_datetime('2000-01-01'))
-end_date = st.date_input("Select the end date", value=pd.to_datetime('today'))
+# User input for date range with default start date set to January 1, 2000
+start_date = st.date_input(
+    "Select the start date",
+    value=pd.to_datetime('2000-01-01'),
+    min_value=pd.to_datetime('1900-01-01'),
+    max_value=pd.to_datetime('today')
+)
+end_date = st.date_input(
+    "Select the end date",
+    value=pd.to_datetime('today'),
+    min_value=pd.to_datetime('1900-01-01'),
+    max_value=pd.to_datetime('today')
+)
+
 
 # Ensure the start date is no later than today (Streamlit automatically restricts future dates)
 start_date = pd.to_datetime(start_date)
