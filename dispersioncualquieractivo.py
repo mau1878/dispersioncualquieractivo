@@ -1,4 +1,3 @@
-# Import necessary modules
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -23,11 +22,11 @@ start_date = st.date_input(
 end_date = st.date_input(
     "Select the end date",
     value=pd.to_datetime('today'),
-    min_value=start_date,
+    min_value=pd.to_datetime('1900-01-01'),
     max_value=pd.to_datetime('today')
 )
 
-# Ensure the start date is no later than today
+# Ensure the start date is no later than today (Streamlit automatically restricts future dates)
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
@@ -39,23 +38,27 @@ apply_ratio = st.checkbox("Adjust price by YPFD.BA/YPF ratio")
 
 # Fetch historical data for the specified ticker
 data = yf.download(ticker, start=start_date, end=end_date)
-data.ffill(inplace=True)
 
 if apply_ratio:
     # Fetch data for YPFD.BA and YPF
     ypfd_ba_data = yf.download("YPFD.BA", start=start_date, end=end_date)
     ypf_data = yf.download("YPF", start=start_date, end=end_date)
 
-    # Forward fill to handle missing data (use the most recent previous value)
-    ypfd_ba_data.ffill(inplace=True)
-    ypf_data.ffill(inplace=True)
+    # Forward fill and backward fill to handle missing data
+    ypfd_ba_data.fillna(method='ffill', inplace=True)
+    ypfd_ba_data.fillna(method='bfill', inplace=True)
+    ypf_data.fillna(method='ffill', inplace=True)
+    ypf_data.fillna(method='bfill', inplace=True)
 
     # Calculate the ratio YPFD.BA/YPF
     ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
 
+    # Synchronize the dates
+    ratio = ratio.reindex(data.index, method='ffill')
+
     # Adjust the original ticker's price by the ratio
-    data['Adj Close'] /= ratio
-    data['Close'] /= ratio
+    data['Adj Close'] = data['Adj Close'] / ratio
+    data['Close'] = data['Close'] / ratio
 
 # Select close price based on user input
 price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
@@ -99,12 +102,14 @@ fig_dispersion.add_trace(go.Scatter(x=data.index, y=data['Dispersion_Percent'], 
 
 # Add a red horizontal line at y=0
 fig_dispersion.add_shape(
-    type="line",
-    x0=data.index.min(),
-    x1=data.index.max(),
-    y0=0,
-    y1=0,
-    line=dict(color="red", width=2)
+    go.layout.Shape(
+        type="line",
+        x0=data.index.min(),
+        x1=data.index.max(),
+        y0=0,
+        y1=0,
+        line=dict(color="red", width=2)
+    )
 )
 
 # Update layout
@@ -119,18 +124,12 @@ fig_dispersion.update_layout(
 # Show the Plotly chart for dispersion percentage
 st.plotly_chart(fig_dispersion)
 
-# User input for the number of bins in the histogram
-num_bins = st.slider("Select the number of bins for the histogram", min_value=10, max_value=100, value=50)
-
-# User input for the color of the histogram
-hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
-
 # Seaborn/Matplotlib Histogram: Dispersion Percent with Percentiles
 percentiles = [95, 85, 75, 50, 25, 15, 5]
 percentile_values = np.percentile(data['Dispersion_Percent'].dropna(), percentiles)
 
 plt.figure(figsize=(10, 6))
-sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color=hist_color, bins=num_bins)
+sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color='blue', bins=100)
 
 # Add percentile lines
 for percentile, value in zip(percentiles, percentile_values):
@@ -149,6 +148,12 @@ plt.title(f'Dispersion Percentage of {ticker} ({close_price_type}) Close Price f
 plt.xlabel('Dispersion (%)')
 plt.ylabel('Frequency')
 st.pyplot(plt)
+
+# User input for the number of bins in the histogram
+num_bins = st.slider("Select the number of bins for the histogram", min_value=10, max_value=100, value=50)
+
+# User input for the color of the histogram
+hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
 
 # Plotly Histogram: Dispersion Percent with User Customization
 fig_hist = go.Figure()
