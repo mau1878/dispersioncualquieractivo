@@ -6,6 +6,7 @@ import plotly.graph_objs as go
 import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats as stats
 
 # User input for the ticker symbol
 ticker = st.text_input("Enter the ticker symbol", value="GGAL")
