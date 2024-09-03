@@ -19,11 +19,29 @@ end_date = st.date_input("Select the end date", value=pd.to_datetime('today'))
 # User input for close price type
 close_price_type = st.selectbox("Select Close Price Type", ["Unadjusted", "Adjusted"])
 
+# Checkbox for ratio adjustment
+apply_ratio = st.checkbox("Divide by YPFD.BA/YPF ratio")
+
 # Fetch historical data for the specified ticker
 data = yf.download(ticker, start=start_date, end=end_date)
 
 # Select close price based on user input
 price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
+
+if apply_ratio:
+    # Fetch data for YPFD.BA and YPF
+    ypfd_data = yf.download("YPFD.BA", start=start_date, end=end_date)[price_column]
+    ypf_data = yf.download("YPF", start=start_date, end=end_date)[price_column]
+    
+    # Forward-fill missing data to handle unavailable dates
+    ypfd_data.ffill(inplace=True)
+    ypf_data.ffill(inplace=True)
+    
+    # Calculate the YPFD.BA/YPF ratio
+    ratio = ypfd_data / ypf_data
+    
+    # Divide the original data by the ratio
+    data[price_column] /= ratio
 
 # Calculate the user-defined SMA
 sma_label = f'{sma_window}_SMA'
