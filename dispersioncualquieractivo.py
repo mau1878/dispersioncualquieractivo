@@ -8,12 +8,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # User input for the ticker symbol
-ticker = st.text_input("Enter the ticker symbol", value="GGAL")
+ticker = st.text_input("Enter the ticker symbol", value="GGAL").upper()
 
 # User input for the SMA window
 sma_window = st.number_input("Enter the SMA window (number of days)", min_value=1, value=21)
 
-# User input for date range with default start date set to January 1, 2000
 # User input for date range with default start date set to January 1, 2000
 start_date = st.date_input(
     "Select the start date",
@@ -24,24 +23,23 @@ start_date = st.date_input(
 end_date = st.date_input(
     "Select the end date",
     value=pd.to_datetime('today'),
-    min_value=pd.to_datetime('1900-01-01'),
+    min_value=start_date,
     max_value=pd.to_datetime('today')
 )
 
-
-# Ensure the start date is no later than today (Streamlit automatically restricts future dates)
+# Ensure the start date is no later than today
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
 # User input for close price type
 close_price_type = st.selectbox("Select Close Price Type", ["Unadjusted", "Adjusted"])
 
-
 # Check if user wants to apply the ratio adjustment
 apply_ratio = st.checkbox("Adjust price by YPFD.BA/YPF ratio")
 
 # Fetch historical data for the specified ticker
 data = yf.download(ticker, start=start_date, end=end_date)
+data.ffill(inplace=True)
 
 if apply_ratio:
     # Fetch data for YPFD.BA and YPF
@@ -56,8 +54,8 @@ if apply_ratio:
     ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
 
     # Adjust the original ticker's price by the ratio
-    data['Adj Close'] = data['Adj Close'] / ratio
-    data['Close'] = data['Close'] / ratio
+    data['Adj Close'] /= ratio
+    data['Close'] /= ratio
 
 # Select close price based on user input
 price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
@@ -101,14 +99,12 @@ fig_dispersion.add_trace(go.Scatter(x=data.index, y=data['Dispersion_Percent'], 
 
 # Add a red horizontal line at y=0
 fig_dispersion.add_shape(
-    go.layout.Shape(
-        type="line",
-        x0=data.index.min(),
-        x1=data.index.max(),
-        y0=0,
-        y1=0,
-        line=dict(color="red", width=2)
-    )
+    type="line",
+    x0=data.index.min(),
+    x1=data.index.max(),
+    y0=0,
+    y1=0,
+    line=dict(color="red", width=2)
 )
 
 # Update layout
@@ -123,12 +119,18 @@ fig_dispersion.update_layout(
 # Show the Plotly chart for dispersion percentage
 st.plotly_chart(fig_dispersion)
 
+# User input for the number of bins in the histogram
+num_bins = st.slider("Select the number of bins for the histogram", min_value=10, max_value=100, value=50)
+
+# User input for the color of the histogram
+hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
+
 # Seaborn/Matplotlib Histogram: Dispersion Percent with Percentiles
 percentiles = [95, 85, 75, 50, 25, 15, 5]
 percentile_values = np.percentile(data['Dispersion_Percent'].dropna(), percentiles)
 
 plt.figure(figsize=(10, 6))
-sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color='blue', bins=100)
+sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color=hist_color, bins=num_bins)
 
 # Add percentile lines
 for percentile, value in zip(percentiles, percentile_values):
@@ -143,20 +145,11 @@ for percentile, value in zip(percentiles, percentile_values):
         horizontalalignment='right'  # Align horizontally
     )
 
-
 plt.title(f'Dispersion Percentage of {ticker} ({close_price_type}) Close Price from {sma_window}-day SMA')
 plt.xlabel('Dispersion (%)')
 plt.ylabel('Frequency')
 st.pyplot(plt)
 
-# User input for the number of bins in the histogram
-num_bins = st.slider("Select the number of bins for the histogram", min_value=10, max_value=100, value=50)
-
-# User input for the color of the histogram
-hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
-
-# Plotly Histogram: Dispersion Percent with User Customization
-# Plotly Histogram: Dispersion Percent with User Customization
 # Plotly Histogram: Dispersion Percent with User Customization
 fig_hist = go.Figure()
 
@@ -195,4 +188,3 @@ fig_hist.update_layout(
 
 # Display the interactive Plotly histogram
 st.plotly_chart(fig_hist)
-
