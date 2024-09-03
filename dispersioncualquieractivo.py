@@ -6,99 +6,99 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
-# User input for the ticker symbol
-ticker = st.text_input("Enter the ticker symbol", value="GGAL").upper()
+# Entrada del usuario para el símbolo del ticker
+ticker = st.text_input("Ingrese el símbolo del ticker", value="GGAL").upper()
 
-# User input for the SMA window
-sma_window = st.number_input("Enter the SMA window (number of days)", min_value=1, value=21)
+# Entrada del usuario para la ventana de SMA
+sma_window = st.number_input("Ingrese la ventana de SMA (número de días)", min_value=1, value=21)
 
-# User input for date range with default start date set to January 1, 2000
+# Entrada del usuario para el rango de fechas con fecha de inicio predeterminada al 1 de enero de 2000
 start_date = st.date_input(
-    "Select the start date",
+    "Seleccione la fecha de inicio",
     value=pd.to_datetime('2000-01-01'),
     min_value=pd.to_datetime('1900-01-01'),
     max_value=pd.to_datetime('today')
 )
 end_date = st.date_input(
-    "Select the end date",
+    "Seleccione la fecha de fin",
     value=pd.to_datetime('today'),
     min_value=pd.to_datetime('1900-01-01'),
     max_value=pd.to_datetime('today')
 )
 
-# Ensure the start date is no later than today (Streamlit automatically restricts future dates)
+# Asegúrese de que la fecha de inicio no sea posterior a hoy
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
-# User input for close price type
-close_price_type = st.selectbox("Select Close Price Type", ["Unadjusted", "Adjusted"])
+# Entrada del usuario para el tipo de precio de cierre
+close_price_type = st.selectbox("Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"])
 
-# Check if user wants to apply the ratio adjustment
-apply_ratio = st.checkbox("Adjust price by YPFD.BA/YPF ratio")
+# Verificar si el usuario desea aplicar el ajuste por el ratio
+apply_ratio = st.checkbox("Ajustar precio por el ratio YPFD.BA/YPF")
 
-# Fetch historical data for the specified ticker
+# Obtener datos históricos para el ticker especificado
 data = yf.download(ticker, start=start_date, end=end_date)
 
 if apply_ratio:
-    # Fetch data for YPFD.BA and YPF
+    # Obtener datos para YPFD.BA y YPF
     ypfd_ba_data = yf.download("YPFD.BA", start=start_date, end=end_date)
     ypf_data = yf.download("YPF", start=start_date, end=end_date)
 
-    # Forward fill and backward fill to handle missing data
+    # Rellenar hacia adelante y hacia atrás para manejar datos faltantes
     ypfd_ba_data = ypfd_ba_data.ffill().bfill()
     ypf_data = ypf_data.ffill().bfill()
 
-    # Calculate the ratio YPFD.BA/YPF
+    # Calcular el ratio YPFD.BA/YPF
     ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
 
-    # Synchronize the dates
+    # Sincronizar las fechas
     ratio = ratio.reindex(data.index).ffill()
 
-    # Adjust the original ticker's price by the ratio
+    # Ajustar el precio del ticker original por el ratio
     data['Adj Close'] = data['Adj Close'] / ratio
     data['Close'] = data['Close'] / ratio
 
-# Select close price based on user input
-price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
+# Seleccionar el precio de cierre basado en la entrada del usuario
+price_column = 'Adj Close' if close_price_type == "Ajustado" else 'Close'
 
-# Calculate the user-defined SMA
-sma_label = f'{sma_window}_SMA'
+# Calcular la SMA definida por el usuario
+sma_label = f'SMA_{sma_window}'
 data[sma_label] = data[price_column].rolling(window=sma_window).mean()
 
-# Calculate the dispersion (price - SMA)
-data['Dispersion'] = data[price_column] - data[sma_label]
+# Calcular la dispersión (precio - SMA)
+data['Dispersión'] = data[price_column] - data[sma_label]
 
-# Calculate the dispersion percentage
-data['Dispersion_Percent'] = data['Dispersion'] / data[sma_label] * 100
+# Calcular el porcentaje de dispersión
+data['Porcentaje_Dispersión'] = data['Dispersión'] / data[sma_label] * 100
 
-# Plotly Line Plot: Historical Price with SMA
+# Gráfico de líneas con Plotly: Precio histórico con SMA
 fig = go.Figure()
 
-# Plot the historical close price
-fig.add_trace(go.Scatter(x=data.index, y=data[price_column], mode='lines', name='Close Price'))
+# Gráfico del precio de cierre histórico
+fig.add_trace(go.Scatter(x=data.index, y=data[price_column], mode='lines', name='Precio de Cierre'))
 
-# Plot the SMA
-fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'{sma_window}-day SMA'))
+# Gráfico de la SMA
+fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'SMA de {sma_window} días'))
 
-# Update layout
+# Actualizar el diseño
 fig.update_layout(
-    title=f"Historical {close_price_type} Price of {ticker} with {sma_window}-day SMA",
-    xaxis_title="Date",
-    yaxis_title="Price (USD)",
-    legend_title="Legend",
+    title=f"Precio Histórico {close_price_type} de {ticker} con SMA de {sma_window} días",
+    xaxis_title="Fecha",
+    yaxis_title="Precio (USD)",
+    legend_title="Leyenda",
     template="plotly_dark"
 )
 
-# Show the Plotly chart
+# Mostrar el gráfico de Plotly
 st.plotly_chart(fig)
 
-# Plotly Line Plot: Historical Dispersion Percentage
+# Gráfico de líneas con Plotly: Porcentaje de dispersión histórico
 fig_dispersion = go.Figure()
 
-# Plot the dispersion percentage
-fig_dispersion.add_trace(go.Scatter(x=data.index, y=data['Dispersion_Percent'], mode='lines', name='Dispersion %'))
+# Gráfico del porcentaje de dispersión
+fig_dispersion.add_trace(go.Scatter(x=data.index, y=data['Porcentaje_Dispersión'], mode='lines', name='Porcentaje de Dispersión'))
 
-# Add a red horizontal line at y=0
+# Añadir una línea horizontal roja en y=0
 fig_dispersion.add_shape(
     go.layout.Shape(
         type="line",
@@ -110,26 +110,26 @@ fig_dispersion.add_shape(
     )
 )
 
-# Update layout
+# Actualizar el diseño
 fig_dispersion.update_layout(
-    title=f"Historical Dispersion Percentage of {ticker} ({close_price_type})",
-    xaxis_title="Date",
-    yaxis_title="Dispersion (%)",
-    legend_title="Legend",
+    title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
+    xaxis_title="Fecha",
+    yaxis_title="Dispersión (%)",
+    legend_title="Leyenda",
     template="plotly_dark"
 )
 
-# Show the Plotly chart for dispersion percentage
+# Mostrar el gráfico de Plotly para el porcentaje de dispersión
 st.plotly_chart(fig_dispersion)
 
-# Seaborn/Matplotlib Histogram: Dispersion Percent with Percentiles
+# Histograma con Seaborn/Matplotlib: Porcentaje de dispersión con percentiles
 percentiles = [95, 85, 75, 50, 25, 15, 5]
-percentile_values = np.percentile(data['Dispersion_Percent'].dropna(), percentiles)
+percentile_values = np.percentile(data['Porcentaje_Dispersión'].dropna(), percentiles)
 
 plt.figure(figsize=(10, 6))
-sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color='blue', bins=100)
+sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100)
 
-# Add percentile lines
+# Añadir líneas de percentiles
 for percentile, value in zip(percentiles, percentile_values):
     plt.axvline(value, color='red', linestyle='--')
     plt.text(
@@ -137,36 +137,36 @@ for percentile, value in zip(percentiles, percentile_values):
         plt.ylim()[1] * 0.9, 
         f'{percentile}th', 
         color='red',
-        rotation='vertical',   # Rotate text vertically
-        verticalalignment='center',  # Align vertically
-        horizontalalignment='right'  # Align horizontally
+        rotation='vertical',   # Rotar el texto verticalmente
+        verticalalignment='center',  # Alinear verticalmente
+        horizontalalignment='right'  # Alinear horizontalmente
     )
 
-plt.title(f'Dispersion Percentage of {ticker} ({close_price_type}) Close Price from {sma_window}-day SMA')
-plt.xlabel('Dispersion (%)')
-plt.ylabel('Frequency')
+plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde SMA de {sma_window} días')
+plt.xlabel('Dispersión (%)')
+plt.ylabel('Frecuencia')
 st.pyplot(plt)
 
-# User input for the number of bins in the histogram
-num_bins = st.slider("Select the number of bins for the histogram", min_value=10, max_value=100, value=50)
+# Entrada del usuario para el número de bins en el histograma
+num_bins = st.slider("Seleccione el número de bins para el histograma", min_value=10, max_value=100, value=50)
 
-# User input for the color of the histogram
-hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
+# Entrada del usuario para el color del histograma
+hist_color = st.color_picker("Elija un color para el histograma", value='#1f77b4')
 
-# Plotly Histogram: Dispersion Percent with User Customization
+# Histograma con Plotly: Porcentaje de dispersión con personalización del usuario
 fig_hist = go.Figure()
 
-# Add the histogram trace
+# Añadir la traza del histograma
 fig_hist.add_trace(
     go.Histogram(
-        x=data['Dispersion_Percent'].dropna(),
+        x=data['Porcentaje_Dispersión'].dropna(),
         nbinsx=num_bins,
         marker_color=hist_color,
         opacity=0.75
     )
 )
 
-# Add percentile lines as vertical shapes
+# Añadir líneas de percentiles como formas verticales
 for percentile, value in zip(percentiles, percentile_values):
     fig_hist.add_vline(
         x=value,
@@ -174,20 +174,20 @@ for percentile, value in zip(percentiles, percentile_values):
         annotation_text=f'{percentile}th percentile',
         annotation_position="top",
         annotation=dict(
-            textangle=-90,  # Rotate text to vertical
+            textangle=-90,  # Rotar el texto a vertical
             font=dict(color="red")
         )
     )
 
-# Update layout for interactivity and customization
+# Actualizar el diseño para interactividad y personalización
 fig_hist.update_layout(
-    title=f"Customizable Histogram of Dispersion Percentage for {ticker} ({close_price_type})",
-    xaxis_title="Dispersion (%)",
-    yaxis_title="Frequency",
-    bargap=0.1,  # Gap between bars
+    title=f"Histograma Personalizable del Porcentaje de Dispersión para {ticker} ({close_price_type})",
+    xaxis_title="Dispersión (%)",
+    yaxis_title="Frecuencia",
+    bargap=0.1,  # Espacio entre barras
     template="plotly_dark",
     showlegend=False
 )
 
-# Display the interactive Plotly histogram
+# Mostrar el histograma interactivo de Plotly
 st.plotly_chart(fig_hist)
