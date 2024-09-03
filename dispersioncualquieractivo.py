@@ -21,9 +21,9 @@ start_date = st.date_input(
 )
 end_date = st.date_input(
     "Seleccione la fecha de fin",
-    value=pd.to_datetime('today'),
+    value=pd.to_datetime('today') + pd.DateOffset(days=1),  # Establecer la fecha de fin predeterminada como el día siguiente a hoy
     min_value=pd.to_datetime('1900-01-01'),
-    max_value=pd.to_datetime('today')
+    max_value=pd.to_datetime('today') + pd.DateOffset(days=1)  # Limitar la fecha de fin a "el día siguiente a hoy"
 )
 
 # Asegúrese de que la fecha de inicio no sea posterior a hoy
