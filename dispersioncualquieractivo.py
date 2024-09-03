@@ -19,8 +19,8 @@ end_date = st.date_input("Select the end date", value=pd.to_datetime('today'))
 # User input for close price type
 close_price_type = st.selectbox("Select Close Price Type", ["Unadjusted", "Adjusted"])
 
-# Checkbox for ratio adjustment
-apply_ratio = st.checkbox("Divide by YPFD.BA/YPF ratio")
+# Checkbox for price adjustment using the YPFD.BA/YPF ratio
+adjust_price = st.checkbox("Adjust price using YPFD.BA/YPF ratio")
 
 # Fetch historical data for the specified ticker
 data = yf.download(ticker, start=start_date, end=end_date)
@@ -28,20 +28,21 @@ data = yf.download(ticker, start=start_date, end=end_date)
 # Select close price based on user input
 price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
 
-if apply_ratio:
+# Adjust the price if the checkbox is ticked
+if adjust_price:
     # Fetch data for YPFD.BA and YPF
-    ypfd_data = yf.download("YPFD.BA", start=start_date, end=end_date)[price_column]
-    ypf_data = yf.download("YPF", start=start_date, end=end_date)[price_column]
-    
-    # Forward-fill missing data to handle unavailable dates
-    ypfd_data.ffill(inplace=True)
+    ypfd_ba_data = yf.download("YPFD.BA", start=start_date, end=end_date)
+    ypf_data = yf.download("YPF", start=start_date, end=end_date)
+
+    # Forward fill to handle missing data (use the most recent previous value)
+    ypfd_ba_data.ffill(inplace=True)
     ypf_data.ffill(inplace=True)
-    
-    # Calculate the YPFD.BA/YPF ratio
-    ratio = ypfd_data / ypf_data
-    
-    # Divide the original data by the ratio
-    data[price_column] /= ratio
+
+    # Calculate the ratio YPFD.BA/YPF
+    ratio = ypfd_ba_data[price_column] / ypf_data[price_column]
+
+    # Adjust the price of the selected ticker by dividing it by the ratio
+    data[price_column] = data[price_column] / ratio
 
 # Calculate the user-defined SMA
 sma_label = f'{sma_window}_SMA'
@@ -66,7 +67,7 @@ fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'{
 fig.update_layout(
     title=f"Historical {close_price_type} Price of {ticker} with {sma_window}-day SMA",
     xaxis_title="Date",
-    yaxis_title="Price (USD)",
+    yaxis_title="Price (USD)" if not adjust_price else "Adjusted Price (USD)",
     legend_title="Legend",
     template="plotly_dark"
 )
