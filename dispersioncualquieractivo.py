@@ -45,16 +45,14 @@ if apply_ratio:
     ypf_data = yf.download("YPF", start=start_date, end=end_date)
 
     # Forward fill and backward fill to handle missing data
-    ypfd_ba_data.fillna(method='ffill', inplace=True)
-    ypfd_ba_data.fillna(method='bfill', inplace=True)
-    ypf_data.fillna(method='ffill', inplace=True)
-    ypf_data.fillna(method='bfill', inplace=True)
+    ypfd_ba_data = ypfd_ba_data.ffill().bfill()
+    ypf_data = ypf_data.ffill().bfill()
 
     # Calculate the ratio YPFD.BA/YPF
     ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
 
     # Synchronize the dates
-    ratio = ratio.reindex(data.index, method='ffill')
+    ratio = ratio.reindex(data.index).ffill()
 
     # Adjust the original ticker's price by the ratio
     data['Adj Close'] = data['Adj Close'] / ratio
