@@ -1,3 +1,4 @@
+# Import necessary modules
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -16,20 +17,19 @@ sma_window = st.number_input("Enter the SMA window (number of days)", min_value=
 start_date = st.date_input("Select the start date", value=pd.to_datetime('2000-01-01'))
 end_date = st.date_input("Select the end date", value=pd.to_datetime('today'))
 
+# Ensure the start date is no later than the most recent allowed date
+start_date = max(pd.to_datetime('2000-01-01'), min(start_date, pd.to_datetime('today')))
+
 # User input for close price type
 close_price_type = st.selectbox("Select Close Price Type", ["Unadjusted", "Adjusted"])
 
-# Checkbox for price adjustment using the YPFD.BA/YPF ratio
-adjust_price = st.checkbox("Adjust price using YPFD.BA/YPF ratio")
+# Check if user wants to apply the ratio adjustment
+apply_ratio = st.checkbox("Adjust price by YPFD.BA/YPF ratio")
 
 # Fetch historical data for the specified ticker
 data = yf.download(ticker, start=start_date, end=end_date)
 
-# Select close price based on user input
-price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
-
-# Adjust the price if the checkbox is ticked
-if adjust_price:
+if apply_ratio:
     # Fetch data for YPFD.BA and YPF
     ypfd_ba_data = yf.download("YPFD.BA", start=start_date, end=end_date)
     ypf_data = yf.download("YPF", start=start_date, end=end_date)
@@ -39,14 +39,14 @@ if adjust_price:
     ypf_data.ffill(inplace=True)
 
     # Calculate the ratio YPFD.BA/YPF
-    ratio = ypfd_ba_data[price_column] / ypf_data[price_column]
+    ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
 
-    # Adjust the price of the selected ticker by dividing it by the ratio
-    data[price_column] = data[price_column] / ratio
+    # Adjust the original ticker's price by the ratio
+    data['Adj Close'] = data['Adj Close'] / ratio
+    data['Close'] = data['Close'] / ratio
 
-    # Handle NaN values in the adjusted price (forward fill or drop them)
-    data[price_column].ffill(inplace=True)
-    data.dropna(subset=[price_column], inplace=True)
+# Select close price based on user input
+price_column = 'Adj Close' if close_price_type == "Adjusted" else 'Close'
 
 # Calculate the user-defined SMA
 sma_label = f'{sma_window}_SMA'
@@ -71,7 +71,7 @@ fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'{
 fig.update_layout(
     title=f"Historical {close_price_type} Price of {ticker} with {sma_window}-day SMA",
     xaxis_title="Date",
-    yaxis_title="Price (USD)" if not adjust_price else "Adjusted Price (USD)",
+    yaxis_title="Price (USD)",
     legend_title="Legend",
     template="plotly_dark"
 )
