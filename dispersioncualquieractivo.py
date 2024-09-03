@@ -124,7 +124,7 @@ fig_dispersion.update_layout(
 st.plotly_chart(fig_dispersion)
 
 # Seaborn/Matplotlib Histogram: Dispersion Percent with Percentiles
-percentiles = [95, 75, 50, 25, 5]
+percentiles = [95, 85, 75, 50, 25, 15, 5]
 percentile_values = np.percentile(data['Dispersion_Percent'].dropna(), percentiles)
 
 plt.figure(figsize=(10, 6))
@@ -133,7 +133,16 @@ sns.histplot(data['Dispersion_Percent'].dropna(), kde=True, color='blue', bins=1
 # Add percentile lines
 for percentile, value in zip(percentiles, percentile_values):
     plt.axvline(value, color='red', linestyle='--')
-    plt.text(value, plt.ylim()[1]*0.9, f'{percentile}th', color='red')
+    plt.text(
+        value, 
+        plt.ylim()[1] * 0.9, 
+        f'{percentile}th', 
+        color='red',
+        rotation='vertical',   # Rotate text vertically
+        verticalalignment='center',  # Align vertically
+        horizontalalignment='right'  # Align horizontally
+    )
+
 
 plt.title(f'Dispersion Percentage of {ticker} ({close_price_type}) Close Price from {sma_window}-day SMA')
 plt.xlabel('Dispersion (%)')
