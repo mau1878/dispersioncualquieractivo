@@ -157,6 +157,7 @@ hist_color = st.color_picker("Pick a color for the histogram", value='#1f77b4')
 
 # Plotly Histogram: Dispersion Percent with User Customization
 # Plotly Histogram: Dispersion Percent with User Customization
+# Plotly Histogram: Dispersion Percent with User Customization
 fig_hist = go.Figure()
 
 # Add the histogram trace
@@ -166,26 +167,6 @@ fig_hist.add_trace(
         nbinsx=num_bins,
         marker_color=hist_color,
         opacity=0.75
-    )
-)
-
-# Calculate mean and standard deviation for the bell curve
-mean = np.mean(data['Dispersion_Percent'].dropna())
-std_dev = np.std(data['Dispersion_Percent'].dropna())
-
-# Generate x-values for the bell curve
-x_values = np.linspace(mean - 3*std_dev, mean + 3*std_dev, 100)
-# Calculate y-values for the bell curve
-y_values = (1 / (std_dev * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_values - mean) / std_dev) ** 2)
-
-# Add the bell curve to the plot
-fig_hist.add_trace(
-    go.Scatter(
-        x=x_values,
-        y=y_values * len(data['Dispersion_Percent'].dropna()) * (x_values[1] - x_values[0]),  # Scale y-values to match histogram
-        mode='lines',
-        line=dict(color='green', width=2),
-        name='Bell Curve'
     )
 )
 
@@ -209,8 +190,9 @@ fig_hist.update_layout(
     yaxis_title="Frequency",
     bargap=0.1,  # Gap between bars
     template="plotly_dark",
-    showlegend=True  # Ensure the legend is shown
+    showlegend=False
 )
 
 # Display the interactive Plotly histogram
 st.plotly_chart(fig_hist)
+
