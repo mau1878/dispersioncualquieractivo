@@ -5,4 +5,3 @@ plotly
 seaborn
 matplotlib
 numpy
-scipy
