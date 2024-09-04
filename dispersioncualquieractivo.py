@@ -80,6 +80,16 @@ fig.add_trace(go.Scatter(x=data.index, y=data[price_column], mode='lines', name=
 # Gráfico de la SMA
 fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'SMA de {sma_window} días'))
 
+# Añadir watermark
+fig.add_annotation(
+    text="MTaurus. X: mtaurus_ok",
+    xref="paper", yref="paper",
+    x=0.95, y=0.05,
+    showarrow=False,
+    font=dict(size=14, color="gray"),
+    opacity=0.5
+)
+
 # Actualizar el diseño
 fig.update_layout(
     title=f"Precio Histórico {close_price_type} de {ticker} con SMA de {sma_window} días",
@@ -108,6 +118,16 @@ fig_dispersion.add_shape(
         y1=0,
         line=dict(color="red", width=2)
     )
+)
+
+# Añadir watermark
+fig_dispersion.add_annotation(
+    text="MTaurus. X: mtaurus_ok",
+    xref="paper", yref="paper",
+    x=0.95, y=0.05,
+    showarrow=False,
+    font=dict(size=14, color="gray"),
+    opacity=0.5
 )
 
 # Actualizar el diseño
@@ -141,6 +161,12 @@ for percentile, value in zip(percentiles, percentile_values):
         verticalalignment='center',  # Alinear verticalmente
         horizontalalignment='right'  # Alinear horizontalmente
     )
+
+# Añadir watermark
+plt.text(
+    0.95, 0.05, "MTaurus. X: mtaurus_ok", 
+    fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure
+)
 
 plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde SMA de {sma_window} días')
 plt.xlabel('Dispersión (%)')
@@ -179,15 +205,24 @@ for percentile, value in zip(percentiles, percentile_values):
         )
     )
 
-# Actualizar el diseño para interactividad y personalización
-fig_hist.update_layout(
-    title=f"Histograma Personalizable del Porcentaje de Dispersión para {ticker} ({close_price_type})",
-    xaxis_title="Dispersión (%)",
-    yaxis_title="Frecuencia",
-    bargap=0.1,  # Espacio entre barras
-    template="plotly_dark",
-    showlegend=False
+# Añadir watermark
+fig_hist.add_annotation(
+    text="MTaurus. X: mtaurus_ok",
+    xref="paper", yref="paper",
+    x=0.95, y=0.05,
+    showarrow=False,
+    font=dict(size=14, color="gray"),
+    opacity=0.5
 )
 
-# Mostrar el histograma interactivo de Plotly
+# Actualizar el diseño para interactividad y personalización
+fig_hist.update_layout(
+    title=f'Histograma del Porcentaje de Dispersión de {ticker} ({close_price_type})',
+    xaxis_title='Dispersión (%)',
+    yaxis_title='Frecuencia',
+    bargap=0.1,
+    template="plotly_dark"
+)
+
+# Mostrar el gráfico de Plotly para el histograma
 st.plotly_chart(fig_hist)
