@@ -87,14 +87,14 @@ if apply_ratio:
 
   # Verificar que 'Adj Close' esté presente
   if 'Adj Close' not in ypfd_ba_data.columns or 'Adj Close' not in ypf_data.columns:
-      st.error("Los datos descargados no contienen la columna 'Adj Close'.")
+      st.error("Los datos descargados para 'YPFD.BA' o 'YPF' no contienen la columna 'Adj Close'.")
       st.stop()
 
   # Calcular el ratio YPFD.BA/YPF
   ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
 
   # Alinear el ratio con el índice de 'data'
-  ratio_aligned, data_aligned = ratio.align(data.index.to_series(), join='right')
+  ratio_aligned = ratio.reindex(data.index).ffill().bfill()
 
   # Verificar si el ratio alineado tiene la misma longitud que 'data'
   if len(ratio_aligned) != len(data):
@@ -111,8 +111,22 @@ if apply_ratio:
       st.error("El ratio YPFD.BA/YPF contiene valores NaN incluso después de rellenar.")
       st.stop()
 
+  # Verificar que 'Adj Close' y 'Close' existan en los datos principales
+  required_columns = ['Adj Close', 'Close']
+  missing_columns = [col for col in required_columns if col not in data.columns]
+  if missing_columns:
+      st.error(f"Las siguientes columnas faltan en los datos principales: {missing_columns}")
+      st.stop()
+
   # Aplicar el ratio
   try:
+      # Verificar que 'Adj Close' y 'Close' sean Series
+      if isinstance(data['Adj Close'], pd.DataFrame):
+          data['Adj Close'] = data['Adj Close'].iloc[:, 0]
+      if isinstance(data['Close'], pd.DataFrame):
+          data['Close'] = data['Close'].iloc[:, 0]
+
+      # Aplicar el ratio
       data['Adj Close'] = data['Adj Close'] / ratio_aligned
       data['Close'] = data['Close'] / ratio_aligned
   except Exception as e:
@@ -121,6 +135,11 @@ if apply_ratio:
 
 # Seleccionar el precio de cierre basado en la entrada del usuario
 price_column = 'Adj Close' if close_price_type == "Ajustado" else 'Close'
+
+# Verificar que el precio seleccionado exista en los datos
+if price_column not in data.columns:
+  st.error(f"La columna '{price_column}' no existe en los datos.")
+  st.stop()
 
 # Asegurarse de que el precio seleccionado es una Serie
 if isinstance(data[price_column], pd.DataFrame):
@@ -142,8 +161,31 @@ data['Dispersión'] = data[price_column].squeeze() - data[sma_label].squeeze()
 # Calcular el porcentaje de dispersión
 data['Porcentaje_Dispersión'] = (data['Dispersión'] / data[sma_label]) * 100
 
+# ===========================
+# **Depuración Adicional (Opcional)**
+# ===========================
+
+# Puedes descomentar las siguientes líneas para ver la estructura de los datos en diferentes etapas.
+# Esto puede ayudar a identificar dónde podrían estar ocurriendo problemas.
+
+# st.write("Estructura del DataFrame después de ajustes:")
+# st.write(data.head())
+
+# ===========================
+# **Limpieza de Datos: Eliminar Filas con NaN**
+# ===========================
+
+# Definir las columnas a verificar
+required_subset = [price_column, sma_label, 'Dispersión', 'Porcentaje_Dispersión']
+
+# Verificar si todas las columnas requeridas existen en el DataFrame
+missing_in_subset = [col for col in required_subset if col not in data.columns]
+if missing_in_subset:
+  st.error(f"Faltan las siguientes columnas en el DataFrame para la limpieza: {missing_in_subset}")
+  st.stop()
+
 # Limpiar datos: eliminar filas con NaN en las columnas cruciales
-data_clean = data.dropna(subset=[price_column, sma_label, 'Dispersión', 'Porcentaje_Dispersión'])
+data_clean = data.dropna(subset=required_subset)
 
 # Verificar si hay datos después de limpiar
 if data_clean.empty:
@@ -263,7 +305,11 @@ else:
 
 # Definir percentiles
 percentiles = [95, 85, 75, 50, 25, 15, 5]
-percentile_values = np.percentile(data_clean['Porcentaje_Dispersión'], percentiles)
+try:
+  percentile_values = np.percentile(data_clean['Porcentaje_Dispersión'], percentiles)
+except Exception as e:
+  st.error(f"Error al calcular percentiles: {e}")
+  st.stop()
 
 # Crear figura
 plt.figure(figsize=(10, 6))
@@ -299,7 +345,11 @@ plt.xlabel('Dispersión (%)')
 plt.ylabel('Frecuencia')
 
 # Mostrar el histograma
-st.pyplot(plt)
+try:
+  st.pyplot(plt)
+except Exception as e:
+  st.error(f"Error al mostrar el histograma con Seaborn/Matplotlib: {e}")
+
 plt.close()  # Cerrar la figura para liberar memoria
 
 # ---------------------------
