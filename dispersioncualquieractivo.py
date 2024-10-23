@@ -66,11 +66,10 @@ sma_label = f'SMA_{sma_window}'
 data[sma_label] = data[price_column].rolling(window=sma_window).mean()
 
 # Calcular la dispersión (precio - SMA)
-data['Dispersión'] = data[price_column].values - data[sma_label].values
+data['Dispersión'] = (data[price_column] - data[sma_label]).astype(float)
 
 # Calcular el porcentaje de dispersión
-data['Porcentaje_Dispersión'] = (data['Dispersión'] / data[sma_label].values) * 100
-
+data['Porcentaje_Dispersión'] = ((data[price_column] - data[sma_label]) / data[sma_label] * 100).astype(float)
 # Gráfico de líneas con Plotly: Precio histórico con SMA
 fig = go.Figure()
 
