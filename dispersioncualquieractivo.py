@@ -69,7 +69,8 @@ def get_data(ticker_symbol, start, end):
   Retorna un DataFrame vacío en caso de error.
   """
   try:
-      data = yf.download(ticker_symbol, start=start, end=end)
+      # Establecer group_by='column' para obtener columnas de un solo nivel
+      data = yf.download(ticker_symbol, start=start, end=end, group_by='column')
       return data
   except Exception as e:
       st.error(f"Error al descargar datos para {ticker_symbol}: {e}")
