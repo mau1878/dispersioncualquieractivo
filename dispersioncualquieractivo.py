@@ -19,7 +19,12 @@ st.title("Análisis de Dispersión de Activos Financieros")
 ticker = st.text_input("Ingrese el símbolo del ticker", value="GGAL").upper()
 
 # Entrada del usuario para la ventana de SMA
-sma_window = st.number_input("Ingrese la ventana de SMA (número de días)", min_value=1, value=21, step=1)
+sma_window = st.number_input(
+  "Ingrese la ventana de SMA (número de días)", 
+  min_value=1, 
+  value=21, 
+  step=1
+)
 
 # Entrada del usuario para el rango de fechas con fecha de inicio predeterminada al 1 de enero de 2000
 start_date = st.date_input(
@@ -45,7 +50,10 @@ start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
 # Entrada del usuario para el tipo de precio de cierre
-close_price_type = st.selectbox("Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"])
+close_price_type = st.selectbox(
+  "Seleccione el tipo de precio de cierre", 
+  ["No ajustado", "Ajustado"]
+)
 
 # Verificar si el usuario desea aplicar el ajuste por el ratio
 apply_ratio = st.checkbox("Ajustar precio por el ratio YPFD.BA/YPF")
@@ -56,12 +64,16 @@ apply_ratio = st.checkbox("Ajustar precio por el ratio YPFD.BA/YPF")
 
 @st.cache_data(show_spinner=False)
 def get_data(ticker_symbol, start, end):
+  """
+  Función para descargar datos históricos de un ticker usando yfinance.
+  Retorna un DataFrame vacío en caso de error.
+  """
   try:
       data = yf.download(ticker_symbol, start=start, end=end)
       return data
   except Exception as e:
       st.error(f"Error al descargar datos para {ticker_symbol}: {e}")
-      return pd.DataFrame()  # Retorna un DataFrame vacío en caso de error
+      return pd.DataFrame()
 
 # Obtener datos históricos para el ticker especificado
 data = get_data(ticker, start_date, end_date)
@@ -71,53 +83,62 @@ if data.empty:
   st.error(f"No se encontraron datos para el ticker '{ticker}'. Por favor, verifique el símbolo e intente nuevamente.")
   st.stop()
 
+# Mostrar las columnas disponibles en el DataFrame principal
+st.sidebar.subheader("Información de Datos del Ticker")
+st.sidebar.write(f"**Ticker Principal: {ticker}**")
+st.sidebar.write("**Columnas Disponibles:**")
+st.sidebar.write(data.columns.tolist())
+
 if apply_ratio:
   # Obtener datos para YPFD.BA y YPF
-  ypfd_ba_data = get_data("YPFD.BA", start_date, end_date)
-  ypf_data = get_data("YPF", start_date, end_date)
-
+  ytickers = ["YPFD.BA", "YPF"]
+  yt_data = {}
+  for ytick in ytickers:
+      yt_data[ytick] = get_data(ytick, start_date, end_date)
+  
   # Verificar si se obtuvieron datos para ambas acciones
-  if ypfd_ba_data.empty or ypf_data.empty:
+  if any(yt.empty for yt in yt_data.values()):
       st.error("No se pudieron obtener datos para 'YPFD.BA' o 'YPF'. Asegúrese de que los símbolos sean correctos.")
       st.stop()
-
+  
   # Rellenar hacia adelante y hacia atrás para manejar datos faltantes
-  ypfd_ba_data = ypfd_ba_data.ffill().bfill()
-  ypf_data = ypf_data.ffill().bfill()
-
+  for ytick in ytickers:
+      yt_data[ytick] = yt_data[ytick].ffill().bfill()
+  
   # Verificar que 'Adj Close' esté presente
-  if 'Adj Close' not in ypfd_ba_data.columns or 'Adj Close' not in ypf_data.columns:
-      st.error("Los datos descargados para 'YPFD.BA' o 'YPF' no contienen la columna 'Adj Close'.")
+  missing_adj_close = [ytick for ytick in ytickers if 'Adj Close' not in yt_data[ytick].columns]
+  if missing_adj_close:
+      st.error(f"Los datos descargados para {', '.join(missing_adj_close)} no contienen la columna 'Adj Close'.")
       st.stop()
-
+  
   # Calcular el ratio YPFD.BA/YPF
-  ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
-
+  ratio = yt_data["YPFD.BA"]['Adj Close'] / yt_data["YPF"]['Adj Close']
+  
   # Alinear el ratio con el índice de 'data'
   ratio_aligned = ratio.reindex(data.index).ffill().bfill()
-
+  
   # Verificar si el ratio alineado tiene la misma longitud que 'data'
   if len(ratio_aligned) != len(data):
       st.error("El ratio YPFD.BA/YPF no pudo alinearse correctamente con los datos del ticker principal.")
       st.stop()
-
+  
   # Manejar posibles NaN en el ratio
   if ratio_aligned.isnull().any():
       st.warning("Se encontraron valores NaN en el ratio YPFD.BA/YPF. Estos se rellenarán hacia adelante y hacia atrás.")
       ratio_aligned = ratio_aligned.ffill().bfill()
-
+  
   # Verificar nuevamente que no haya NaN
   if ratio_aligned.isnull().any():
       st.error("El ratio YPFD.BA/YPF contiene valores NaN incluso después de rellenar.")
       st.stop()
-
+  
   # Verificar que 'Adj Close' y 'Close' existan en los datos principales
   required_columns = ['Adj Close', 'Close']
   missing_columns = [col for col in required_columns if col not in data.columns]
   if missing_columns:
       st.error(f"Las siguientes columnas faltan en los datos principales: {missing_columns}")
       st.stop()
-
+  
   # Aplicar el ratio
   try:
       # Verificar que 'Adj Close' y 'Close' sean Series
@@ -125,7 +146,7 @@ if apply_ratio:
           data['Adj Close'] = data['Adj Close'].iloc[:, 0]
       if isinstance(data['Close'], pd.DataFrame):
           data['Close'] = data['Close'].iloc[:, 0]
-
+      
       # Aplicar el ratio
       data['Adj Close'] = data['Adj Close'] / ratio_aligned
       data['Close'] = data['Close'] / ratio_aligned
