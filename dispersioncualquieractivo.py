@@ -13,10 +13,14 @@ st.set_page_config(
   initial_sidebar_state="expanded",
 )
 
-# Definir una función para aplanar las columnas MultiIndex
-def flatten_columns(df):
+# Función para aplanar las columnas MultiIndex solo si hay múltiples tickers
+def flatten_columns(df, ticker):
   if isinstance(df.columns, pd.MultiIndex):
-      df.columns = [' '.join(col).strip() for col in df.columns.values]
+      # Si hay múltiples tickers, aplanar las columnas
+      df.columns = [f"{col[0]} {col[1]}" for col in df.columns]
+  else:
+      # Si es un único ticker, mantener las columnas sin modificar
+      df.columns = [f"{col} {ticker}" for col in df.columns]
   return df
 
 # Función para descargar datos y manejar MultiIndex
@@ -26,7 +30,7 @@ def download_data(ticker, start, end):
       if df.empty:
           st.warning(f"No hay datos disponibles para el ticker **{ticker}** en el rango de fechas seleccionado.")
           return None
-      df = flatten_columns(df)
+      df = flatten_columns(df, ticker)
       st.write(f"**Columnas para {ticker}:** {df.columns.tolist()}")
       return df
   except Exception as e:
@@ -87,46 +91,63 @@ if ticker:
               ypf_data = download_data(ypf_ticker, start_date, end_date)
 
               if ypfd_ba_data is not None and ypf_data is not None:
-                  # Asegurarse de que 'Adj Close' existe en ambos DataFrames
-                  if 'Adj Close' in ypfd_ba_data.columns and 'Adj Close' in ypf_data.columns:
+                  # Definir columnas ajustadas
+                  adj_close_col_ypfd = f"Adj Close {ypfd_ba_ticker}"
+                  adj_close_col_ypf = f"Adj Close {ypf_ticker}"
+
+                  # Verificar si las columnas necesarias existen
+                  if adj_close_col_ypfd in ypfd_ba_data.columns and adj_close_col_ypf in ypf_data.columns:
                       # Rellenar valores faltantes
                       ypfd_ba_data = ypfd_ba_data.fillna(method='ffill').fillna(method='bfill')
                       ypf_data = ypf_data.fillna(method='ffill').fillna(method='bfill')
 
                       # Calcular el ratio YPFD.BA/YPF
-                      ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
+                      ratio = ypfd_ba_data[adj_close_col_ypfd] / ypf_data[adj_close_col_ypf]
 
                       # Sincronizar las fechas con el ticker principal
                       ratio = ratio.reindex(data.index).fillna(method='ffill').fillna(method='bfill')
 
-                      # Ajustar el precio del ticker original por el ratio
-                      if 'Adj Close' in data.columns:
-                          data['Adj Close Ajustado'] = data['Adj Close'] / ratio
-                      else:
-                          st.warning(f"No se encontró la columna 'Adj Close' en el ticker **{ticker}**.")
+                      # Definir columnas ajustadas para el ticker principal
+                      adj_close_col_main = f"Adj Close {ticker}"
+                      close_col_main = f"Close {ticker}"
 
-                      if 'Close' in data.columns:
-                          data['Close Ajustado'] = data['Close'] / ratio
+                      # Verificar si las columnas necesarias existen
+                      if adj_close_col_main in data.columns and close_col_main in data.columns:
+                          # Ajustar el precio del ticker original por el ratio
+                          data['Adj Close Ajustado'] = data[adj_close_col_main] / ratio
+                          data['Close Ajustado'] = data[close_col_main] / ratio
                       else:
-                          st.warning(f"No se encontró la columna 'Close' en el ticker **{ticker}**.")
+                          st.error(f"No se encontraron las columnas necesarias en el ticker **{ticker}**.")
                   else:
                       st.error(f"No se encontraron las columnas 'Adj Close' en **{ypfd_ba_ticker}** o **{ypf_ticker}**.")
               else:
                   st.error("No se pudieron descargar los datos necesarios para aplicar el ratio.")
           else:
               # Si no se aplica el ratio, asegurar que las columnas están correctamente nombradas
-              if 'Adj Close' in data.columns:
-                  data['Adj Close Original'] = data['Adj Close']
-              if 'Close' in data.columns:
-                  data['Close Original'] = data['Close']
+              adj_close_col_main = f"Adj Close {ticker}"
+              close_col_main = f"Close {ticker}"
+
+              if adj_close_col_main in data.columns:
+                  data['Adj Close Original'] = data[adj_close_col_main]
+              else:
+                  st.warning(f"No se encontró la columna '{adj_close_col_main}' en los datos.")
+
+              if close_col_main in data.columns:
+                  data['Close Original'] = data[close_col_main]
+              else:
+                  st.warning(f"No se encontró la columna '{close_col_main}' en los datos.")
 
           # Seleccionar el precio de cierre basado en la entrada del usuario
           if apply_ratio:
-              price_column = 'Adj Close Ajustado' if close_price_type == "Ajustado" and 'Adj Close Ajustado' in data.columns else 'Adj Close'
-              if apply_ratio and close_price_type == "No ajustado" and 'Adj Close Original' in data.columns:
-                  price_column = 'Close Ajustado' if 'Close Ajustado' in data.columns else 'Close'
+              if close_price_type == "Ajustado":
+                  price_column = 'Adj Close Ajustado' if 'Adj Close Ajustado' in data.columns else adj_close_col_main
+              else:
+                  price_column = 'Close Ajustado' if 'Close Ajustado' in data.columns else close_col_main
           else:
-              price_column = 'Adj Close' if close_price_type == "Ajustado" else 'Close'
+              if close_price_type == "Ajustado":
+                  price_column = 'Adj Close Original' if 'Adj Close Original' in data.columns else adj_close_col_main
+              else:
+                  price_column = 'Close Original' if 'Close Original' in data.columns else close_col_main
 
           # Verificar que la columna seleccionada existe
           if price_column not in data.columns:
@@ -241,23 +262,23 @@ if ticker:
 
               plt.figure(figsize=(10, 6))
               sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100)
-              
+
               # Añadir líneas de percentiles
               for percentile, value in zip(percentiles, percentile_values):
                   plt.axvline(value, color='red', linestyle='--')
                   plt.text(
-                      value, 
-                      plt.ylim()[1] * 0.9, 
-                      f'{percentile}º Percentil', 
+                      value,
+                      plt.ylim()[1] * 0.9,
+                      f'{percentile}º Percentil',
                       color='red',
-                      rotation='vertical',   # Rotar el texto verticalmente
+                      rotation='vertical',  # Rotar el texto verticalmente
                       verticalalignment='center',  # Alinear verticalmente
                       horizontalalignment='right'  # Alinear horizontalmente
                   )
 
               # Añadir watermark
               plt.text(
-                  0.95, 0.05, "MTaurus. X: mtaurus_ok", 
+                  0.95, 0.05, "MTaurus. X: mtaurus_ok",
                   fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure
               )
 
@@ -268,7 +289,7 @@ if ticker:
               st.pyplot(plt)
               plt.clf()  # Limpiar la figura para evitar superposiciones
 
-              # 4. Entrada del usuario para el número de bins en el histograma
+              # 4. Personalización del Histograma
               st.write("### 🎨 Personalización del Histograma")
               num_bins = st.slider("Seleccione el número de bins para el histograma", min_value=10, max_value=100, value=50, key="bins_slider")
               hist_color = st.color_picker("Elija un color para el histograma", value='#1f77b4', key="color_picker")
@@ -325,7 +346,7 @@ if ticker:
               st.plotly_chart(fig_hist, use_container_width=True)
 
 else:
-  st.warning("Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
+  st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
 # Información adicional o footer (opcional)
 st.markdown("---")
