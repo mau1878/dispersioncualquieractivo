@@ -6,444 +6,223 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ===========================
-# **Interfaz de Usuario (UI)**
-# ===========================
-
-st.set_page_config(page_title="Análisis de Dispersión de Activos", layout="wide")
-
-# Título de la aplicación
-st.title("Análisis de Dispersión de Activos Financieros")
-
 # Entrada del usuario para el símbolo del ticker
 ticker = st.text_input("Ingrese el símbolo del ticker", value="GGAL").upper()
 
 # Entrada del usuario para la ventana de SMA
-sma_window = st.number_input(
-  "Ingrese la ventana de SMA (número de días)", 
-  min_value=1, 
-  value=21, 
-  step=1
-)
+sma_window = st.number_input("Ingrese la ventana de SMA (número de días)", min_value=1, value=21)
 
 # Entrada del usuario para el rango de fechas con fecha de inicio predeterminada al 1 de enero de 2000
 start_date = st.date_input(
-  "Seleccione la fecha de inicio",
-  value=pd.to_datetime('2000-01-01'),
-  min_value=pd.to_datetime('1900-01-01'),
-  max_value=pd.to_datetime('today')
+    "Seleccione la fecha de inicio",
+    value=pd.to_datetime('2000-01-01'),
+    min_value=pd.to_datetime('1900-01-01'),
+    max_value=pd.to_datetime('today')
 )
 end_date = st.date_input(
-  "Seleccione la fecha de fin",
-  value=pd.to_datetime('today'),
-  min_value=pd.to_datetime('1900-01-01'),
-  max_value=pd.to_datetime('today')
+    "Seleccione la fecha de fin",
+    value=pd.to_datetime('today') + pd.DateOffset(days=1),  # Establecer la fecha de fin predeterminada como el día siguiente a hoy
+    min_value=pd.to_datetime('1900-01-01'),
+    max_value=pd.to_datetime('today') + pd.DateOffset(days=1)  # Limitar la fecha de fin a "el día siguiente a hoy"
 )
 
-# Asegúrese de que la fecha de inicio no sea posterior a la fecha de fin
-if start_date > end_date:
-  st.error("La fecha de inicio no puede ser posterior a la fecha de fin.")
-  st.stop()
-
-# Conversión a datetime
+# Asegúrese de que la fecha de inicio no sea posterior a hoy
 start_date = pd.to_datetime(start_date)
 end_date = pd.to_datetime(end_date)
 
 # Entrada del usuario para el tipo de precio de cierre
-close_price_type = st.selectbox(
-  "Seleccione el tipo de precio de cierre", 
-  ["No ajustado", "Ajustado"]
-)
+close_price_type = st.selectbox("Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"])
 
 # Verificar si el usuario desea aplicar el ajuste por el ratio
 apply_ratio = st.checkbox("Ajustar precio por el ratio YPFD.BA/YPF")
 
-# ===========================
-# **Obtención y Procesamiento de Datos**
-# ===========================
-
-@st.cache_data(show_spinner=False)
-def get_data(ticker_symbol, start, end):
-  """
-  Función para descargar datos históricos de un ticker usando yfinance.
-  Retorna un DataFrame vacío en caso de error.
-  """
-  try:
-      # Establecer group_by='column' para obtener columnas de un solo nivel
-      data = yf.download(ticker_symbol, start=start, end=end, group_by='column')
-      return data
-  except Exception as e:
-      st.error(f"Error al descargar datos para {ticker_symbol}: {e}")
-      return pd.DataFrame()
-
 # Obtener datos históricos para el ticker especificado
-data = get_data(ticker, start_date, end_date)
-
-# Verificar si se obtuvieron datos
-if data.empty:
-  st.error(f"No se encontraron datos para el ticker '{ticker}'. Por favor, verifique el símbolo e intente nuevamente.")
-  st.stop()
-
-# Mostrar las columnas disponibles en el DataFrame principal
-st.sidebar.subheader("Información de Datos del Ticker")
-st.sidebar.write(f"**Ticker Principal: {ticker}**")
-st.sidebar.write("**Columnas Disponibles:**")
-st.sidebar.write(data.columns.tolist())
+data = yf.download(ticker, start=start_date, end=end_date)
 
 if apply_ratio:
-  # Obtener datos para YPFD.BA y YPF
-  ytickers = ["YPFD.BA", "YPF"]
-  yt_data = {}
-  for ytick in ytickers:
-      yt_data[ytick] = get_data(ytick, start_date, end_date)
-  
-  # Verificar si se obtuvieron datos para ambas acciones
-  if any(yt.empty for yt in yt_data.values()):
-      st.error("No se pudieron obtener datos para 'YPFD.BA' o 'YPF'. Asegúrese de que los símbolos sean correctos.")
-      st.stop()
-  
-  # Rellenar hacia adelante y hacia atrás para manejar datos faltantes
-  for ytick in ytickers:
-      yt_data[ytick] = yt_data[ytick].ffill().bfill()
-  
-  # Verificar que 'Adj Close' esté presente
-  missing_adj_close = [ytick for ytick in ytickers if 'Adj Close' not in yt_data[ytick].columns]
-  if missing_adj_close:
-      st.error(f"Los datos descargados para {', '.join(missing_adj_close)} no contienen la columna 'Adj Close'.")
-      st.stop()
-  
-  # Calcular el ratio YPFD.BA/YPF
-  ratio = yt_data["YPFD.BA"]['Adj Close'] / yt_data["YPF"]['Adj Close']
-  
-  # Alinear el ratio con el índice de 'data'
-  ratio_aligned = ratio.reindex(data.index).ffill().bfill()
-  
-  # Verificar si el ratio alineado tiene la misma longitud que 'data'
-  if len(ratio_aligned) != len(data):
-      st.error("El ratio YPFD.BA/YPF no pudo alinearse correctamente con los datos del ticker principal.")
-      st.stop()
-  
-  # Manejar posibles NaN en el ratio
-  if ratio_aligned.isnull().any():
-      st.warning("Se encontraron valores NaN en el ratio YPFD.BA/YPF. Estos se rellenarán hacia adelante y hacia atrás.")
-      ratio_aligned = ratio_aligned.ffill().bfill()
-  
-  # Verificar nuevamente que no haya NaN
-  if ratio_aligned.isnull().any():
-      st.error("El ratio YPFD.BA/YPF contiene valores NaN incluso después de rellenar.")
-      st.stop()
-  
-  # Verificar que 'Adj Close' y 'Close' existan en los datos principales
-  required_columns = ['Adj Close', 'Close']
-  missing_columns = [col for col in required_columns if col not in data.columns]
-  if missing_columns:
-      st.error(f"Las siguientes columnas faltan en los datos principales: {missing_columns}")
-      st.stop()
-  
-  # Aplicar el ratio
-  try:
-      # Verificar que 'Adj Close' y 'Close' sean Series
-      if isinstance(data['Adj Close'], pd.DataFrame):
-          data['Adj Close'] = data['Adj Close'].iloc[:, 0]
-      if isinstance(data['Close'], pd.DataFrame):
-          data['Close'] = data['Close'].iloc[:, 0]
-      
-      # Aplicar el ratio
-      data['Adj Close'] = data['Adj Close'] / ratio_aligned
-      data['Close'] = data['Close'] / ratio_aligned
-  except Exception as e:
-      st.error(f"Error al aplicar el ratio YPFD.BA/YPF: {e}")
-      st.stop()
+    # Obtener datos para YPFD.BA y YPF
+    ypfd_ba_data = yf.download("YPFD.BA", start=start_date, end=end_date)
+    ypf_data = yf.download("YPF", start=start_date, end=end_date)
+
+    # Rellenar hacia adelante y hacia atrás para manejar datos faltantes
+    ypfd_ba_data = ypfd_ba_data.ffill().bfill()
+    ypf_data = ypf_data.ffill().bfill()
+
+    # Calcular el ratio YPFD.BA/YPF
+    ratio = ypfd_ba_data['Adj Close'] / ypf_data['Adj Close']
+
+    # Sincronizar las fechas
+    ratio = ratio.reindex(data.index).ffill()
+
+    # Ajustar el precio del ticker original por el ratio
+    data['Adj Close'] = data['Adj Close'] / ratio
+    data['Close'] = data['Close'] / ratio
 
 # Seleccionar el precio de cierre basado en la entrada del usuario
 price_column = 'Adj Close' if close_price_type == "Ajustado" else 'Close'
-
-# Verificar que el precio seleccionado exista en los datos
-if price_column not in data.columns:
-  st.error(f"La columna '{price_column}' no existe en los datos.")
-  st.stop()
-
-# Asegurarse de que el precio seleccionado es una Serie
-if isinstance(data[price_column], pd.DataFrame):
-  # Si es DataFrame, seleccionar la primera columna
-  data[price_column] = data[price_column].iloc[:, 0]
 
 # Calcular la SMA definida por el usuario
 sma_label = f'SMA_{sma_window}'
 data[sma_label] = data[price_column].rolling(window=sma_window).mean()
 
-# Asegurarse de que 'sma_label' es una Serie y no un DataFrame
-if isinstance(data[sma_label], pd.DataFrame):
-  data[sma_label] = data[sma_label].iloc[:, 0]
-
 # Calcular la dispersión (precio - SMA)
-# Utilizar .squeeze() para asegurarse de que es una Serie
-data['Dispersión'] = data[price_column].squeeze() - data[sma_label].squeeze()
+data['Dispersión'] = data[price_column] - data[sma_label]
 
 # Calcular el porcentaje de dispersión
-data['Porcentaje_Dispersión'] = (data['Dispersión'] / data[sma_label]) * 100
+data['Porcentaje_Dispersión'] = data['Dispersión'] / data[sma_label] * 100
 
-# ===========================
-# **Depuración Adicional (Opcional)**
-# ===========================
+# Gráfico de líneas con Plotly: Precio histórico con SMA
+fig = go.Figure()
 
-# Puedes descomentar las siguientes líneas para ver la estructura de los datos en diferentes etapas.
-# Esto puede ayudar a identificar dónde podrían estar ocurriendo problemas.
+# Gráfico del precio de cierre histórico
+fig.add_trace(go.Scatter(x=data.index, y=data[price_column], mode='lines', name='Precio de Cierre'))
 
-# st.write("Estructura del DataFrame después de ajustes:")
-# st.write(data.head())
-
-# ===========================
-# **Limpieza de Datos: Eliminar Filas con NaN**
-# ===========================
-
-# Definir las columnas a verificar
-required_subset = [price_column, sma_label, 'Dispersión', 'Porcentaje_Dispersión']
-
-# Verificar si todas las columnas requeridas existen en el DataFrame
-missing_in_subset = [col for col in required_subset if col not in data.columns]
-if missing_in_subset:
-  st.error(f"Faltan las siguientes columnas en el DataFrame para la limpieza: {missing_in_subset}")
-  st.stop()
-
-# Limpiar datos: eliminar filas con NaN en las columnas cruciales
-data_clean = data.dropna(subset=required_subset)
-
-# Verificar si hay datos después de limpiar
-if data_clean.empty:
-  st.error("Después de aplicar filtros y cálculos, no hay datos disponibles para visualizar.")
-  st.stop()
-
-# ===========================
-# **Visualizaciones**
-# ===========================
-
-# ---------------------------
-# **Gráfico de Precio y SMA**
-# ---------------------------
-fig_price_sma = go.Figure()
-
-# Precio de cierre histórico
-fig_price_sma.add_trace(go.Scatter(
-  x=data_clean.index, 
-  y=data_clean[price_column], 
-  mode='lines', 
-  name='Precio de Cierre',
-  line=dict(color='blue')
-))
-
-# SMA
-fig_price_sma.add_trace(go.Scatter(
-  x=data_clean.index, 
-  y=data_clean[sma_label], 
-  mode='lines', 
-  name=f'SMA de {sma_window} días',
-  line=dict(color='orange')
-))
+# Gráfico de la SMA
+fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'SMA de {sma_window} días'))
 
 # Añadir watermark
-fig_price_sma.add_annotation(
-  text="MTaurus. X: mtaurus_ok",
-  xref="paper", yref="paper",
-  x=0.95, y=0.05,
-  showarrow=False,
-  font=dict(size=14, color="gray"),
-  opacity=0.5
+fig.add_annotation(
+    text="MTaurus. X: mtaurus_ok",
+    xref="paper", yref="paper",
+    x=0.95, y=0.05,
+    showarrow=False,
+    font=dict(size=14, color="gray"),
+    opacity=0.5
 )
 
 # Actualizar el diseño
-fig_price_sma.update_layout(
-  title=f"Precio Histórico {close_price_type} de {ticker} con SMA de {sma_window} días",
-  xaxis_title="Fecha",
-  yaxis_title="Precio (USD)",
-  legend_title="Leyenda",
-  template="plotly_dark",
-  hovermode="x unified",
-  height=600
+fig.update_layout(
+    title=f"Precio Histórico {close_price_type} de {ticker} con SMA de {sma_window} días",
+    xaxis_title="Fecha",
+    yaxis_title="Precio (USD)",
+    legend_title="Leyenda",
+    template="plotly_dark"
 )
 
-# Verificar que hay datos para graficar
-if data_clean[price_column].empty:
-  st.warning("No hay datos disponibles para graficar el Precio de Cierre.")
-else:
-  # Mostrar el gráfico
-  st.plotly_chart(fig_price_sma, use_container_width=True)
+# Mostrar el gráfico de Plotly
+st.plotly_chart(fig)
 
-# ---------------------------
-# **Gráfico de Porcentaje de Dispersión**
-# ---------------------------
+# Gráfico de líneas con Plotly: Porcentaje de dispersión histórico
 fig_dispersion = go.Figure()
 
-# Porcentaje de dispersión
-fig_dispersion.add_trace(go.Scatter(
-  x=data_clean.index, 
-  y=data_clean['Porcentaje_Dispersión'], 
-  mode='lines', 
-  name='Porcentaje de Dispersión',
-  line=dict(color='green')
-))
+# Gráfico del porcentaje de dispersión
+fig_dispersion.add_trace(go.Scatter(x=data.index, y=data['Porcentaje_Dispersión'], mode='lines', name='Porcentaje de Dispersión'))
 
-# Línea horizontal en y=0
+# Añadir una línea horizontal roja en y=0
 fig_dispersion.add_shape(
-  type="line",
-  x0=data_clean.index.min(),
-  x1=data_clean.index.max(),
-  y0=0,
-  y1=0,
-  line=dict(color="red", width=2)
+    go.layout.Shape(
+        type="line",
+        x0=data.index.min(),
+        x1=data.index.max(),
+        y0=0,
+        y1=0,
+        line=dict(color="red", width=2)
+    )
 )
 
 # Añadir watermark
 fig_dispersion.add_annotation(
-  text="MTaurus. X: mtaurus_ok",
-  xref="paper", yref="paper",
-  x=0.95, y=0.05,
-  showarrow=False,
-  font=dict(size=14, color="gray"),
-  opacity=0.5
+    text="MTaurus. X: mtaurus_ok",
+    xref="paper", yref="paper",
+    x=0.95, y=0.05,
+    showarrow=False,
+    font=dict(size=14, color="gray"),
+    opacity=0.5
 )
 
 # Actualizar el diseño
 fig_dispersion.update_layout(
-  title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
-  xaxis_title="Fecha",
-  yaxis_title="Dispersión (%)",
-  legend_title="Leyenda",
-  template="plotly_dark",
-  hovermode="x unified",
-  height=600
+    title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
+    xaxis_title="Fecha",
+    yaxis_title="Dispersión (%)",
+    legend_title="Leyenda",
+    template="plotly_dark"
 )
 
-# Verificar que hay datos para graficar
-if data_clean['Porcentaje_Dispersión'].empty:
-  st.warning("No hay datos disponibles para graficar el Porcentaje de Dispersión.")
-else:
-  # Mostrar el gráfico
-  st.plotly_chart(fig_dispersion, use_container_width=True)
+# Mostrar el gráfico de Plotly para el porcentaje de dispersión
+st.plotly_chart(fig_dispersion)
 
-# ---------------------------
-# **Histograma con Seaborn/Matplotlib**
-# ---------------------------
-
-# Definir percentiles
+# Histograma con Seaborn/Matplotlib: Porcentaje de dispersión con percentiles
 percentiles = [95, 85, 75, 50, 25, 15, 5]
-try:
-  percentile_values = np.percentile(data_clean['Porcentaje_Dispersión'], percentiles)
-except Exception as e:
-  st.error(f"Error al calcular percentiles: {e}")
-  st.stop()
+percentile_values = np.percentile(data['Porcentaje_Dispersión'].dropna(), percentiles)
 
-# Crear figura
 plt.figure(figsize=(10, 6))
-sns.histplot(
-  data_clean['Porcentaje_Dispersión'], 
-  kde=True, 
-  color='blue', 
-  bins=100
-)
+sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100)
 
 # Añadir líneas de percentiles
 for percentile, value in zip(percentiles, percentile_values):
-  plt.axvline(value, color='red', linestyle='--')
-  plt.text(
-      value, 
-      plt.ylim()[1] * 0.9, 
-      f'{percentile}th', 
-      color='red',
-      rotation=90,   # Rotar el texto verticalmente
-      verticalalignment='center',  # Alinear verticalmente
-      horizontalalignment='right'  # Alinear horizontalmente
-  )
+    plt.axvline(value, color='red', linestyle='--')
+    plt.text(
+        value, 
+        plt.ylim()[1] * 0.9, 
+        f'{percentile}th', 
+        color='red',
+        rotation='vertical',   # Rotar el texto verticalmente
+        verticalalignment='center',  # Alinear verticalmente
+        horizontalalignment='right'  # Alinear horizontalmente
+    )
 
 # Añadir watermark
 plt.text(
-  0.95, 0.05, "MTaurus. X: mtaurus_ok", 
-  fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure
+    0.95, 0.05, "MTaurus. X: mtaurus_ok", 
+    fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure
 )
 
-# Añadir títulos y etiquetas
 plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde SMA de {sma_window} días')
 plt.xlabel('Dispersión (%)')
 plt.ylabel('Frecuencia')
-
-# Mostrar el histograma
-try:
-  st.pyplot(plt)
-except Exception as e:
-  st.error(f"Error al mostrar el histograma con Seaborn/Matplotlib: {e}")
-
-plt.close()  # Cerrar la figura para liberar memoria
-
-# ---------------------------
-# **Histograma con Plotly (Personalizado por el Usuario)**
-# ---------------------------
+st.pyplot(plt)
 
 # Entrada del usuario para el número de bins en el histograma
-num_bins = st.slider(
-  "Seleccione el número de bins para el histograma", 
-  min_value=10, 
-  max_value=100, 
-  value=50
-)
+num_bins = st.slider("Seleccione el número de bins para el histograma", min_value=10, max_value=100, value=50)
 
 # Entrada del usuario para el color del histograma
-hist_color = st.color_picker(
-  "Elija un color para el histograma", 
-  value='#1f77b4'
-)
+hist_color = st.color_picker("Elija un color para el histograma", value='#1f77b4')
 
-# Crear figura de histograma
+# Histograma con Plotly: Porcentaje de dispersión con personalización del usuario
 fig_hist = go.Figure()
 
-# Añadir traza del histograma
+# Añadir la traza del histograma
 fig_hist.add_trace(
-  go.Histogram(
-      x=data_clean['Porcentaje_Dispersión'],  # Usar data_clean
-      nbinsx=num_bins,
-      marker_color=hist_color,
-      opacity=0.75,
-      name='Distribución'
-  )
+    go.Histogram(
+        x=data['Porcentaje_Dispersión'].dropna(),
+        nbinsx=num_bins,
+        marker_color=hist_color,
+        opacity=0.75
+    )
 )
 
-# Añadir líneas de percentiles
+# Añadir líneas de percentiles como formas verticales
 for percentile, value in zip(percentiles, percentile_values):
-  fig_hist.add_vline(
-      x=value,
-      line=dict(color="red", width=2, dash="dash"),
-      annotation_text=f'{percentile}th percentile',
-      annotation_position="top",
-      annotation=dict(
-          textangle=-90,  # Rotar el texto a vertical
-          font=dict(color="red")
-      )
-  )
+    fig_hist.add_vline(
+        x=value,
+        line=dict(color="red", width=2, dash="dash"),
+        annotation_text=f'{percentile}th percentile',
+        annotation_position="top",
+        annotation=dict(
+            textangle=-90,  # Rotar el texto a vertical
+            font=dict(color="red")
+        )
+    )
 
 # Añadir watermark
 fig_hist.add_annotation(
-  text="MTaurus. X: mtaurus_ok",
-  xref="paper", yref="paper",
-  x=0.95, y=0.05,
-  showarrow=False,
-  font=dict(size=14, color="gray"),
-  opacity=0.5
+    text="MTaurus. X: mtaurus_ok",
+    xref="paper", yref="paper",
+    x=0.95, y=0.05,
+    showarrow=False,
+    font=dict(size=14, color="gray"),
+    opacity=0.5
 )
 
 # Actualizar el diseño para interactividad y personalización
 fig_hist.update_layout(
-  title=f'Histograma del Porcentaje de Dispersión de {ticker} ({close_price_type})',
-  xaxis_title='Dispersión (%)',
-  yaxis_title='Frecuencia',
-  bargap=0.1,
-  template="plotly_dark",
-  hovermode="x unified",
-  legend_title="Leyenda",
-  height=600
+    title=f'Histograma del Porcentaje de Dispersión de {ticker} ({close_price_type})',
+    xaxis_title='Dispersión (%)',
+    yaxis_title='Frecuencia',
+    bargap=0.1,
+    template="plotly_dark"
 )
 
-# Verificar que hay datos para graficar
-if data_clean['Porcentaje_Dispersión'].empty:
-  st.warning("No hay datos disponibles para graficar el histograma de dispersión.")
-else:
-  # Mostrar el histograma
-  st.plotly_chart(fig_hist, use_container_width=True)
+# Mostrar el gráfico de Plotly para el histograma
+st.plotly_chart(fig_hist)
