@@ -32,6 +32,7 @@ def download_data(ticker, start, end):
           return None
       df = flatten_columns(df, ticker)
       st.write(f"**Columnas para {ticker}:** {df.columns.tolist()}")
+      st.write(df.info())
       return df
   except Exception as e:
       st.error(f"Error al descargar datos para el ticker **{ticker}**: {e}")
