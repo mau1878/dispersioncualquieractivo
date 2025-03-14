@@ -149,19 +149,191 @@ if ticker:
                 # Calcular el porcentaje de dispersión
                 data['Porcentaje_Dispersión'] = (data['Dispersión'] / data[sma_label]) * 100
 
-                # [Insert your visualization code here]
-                # Example:
+                # -------------------------------
+                # Visualizaciones y Análisis
+                # -------------------------------
+
+                # 1. Gráfico de líneas con Plotly: Precio histórico con SMA
                 st.write("### 📈 Precio Histórico con SMA")
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=data.index, y=data[price_column], mode='lines', name='Precio de Cierre'))
-                fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'SMA de {sma_window} días'))
-                fig.update_layout(title=f"Precio Histórico de {ticker}", xaxis_title="Fecha", yaxis_title="Precio")
+
+                # Gráfico del precio de cierre histórico
+                fig.add_trace(go.Scatter(
+                    x=data.index,
+                    y=data[price_column],
+                    mode='lines',
+                    name='Precio de Cierre'
+                ))
+
+                # Gráfico de la SMA
+                fig.add_trace(go.Scatter(
+                    x=data.index,
+                    y=data[sma_label],
+                    mode='lines',
+                    name=f'SMA de {sma_window} días'
+                ))
+
+                # Añadir watermark
+                fig.add_annotation(
+                    text="MTaurus. X: mtaurus_ok",
+                    xref="paper", yref="paper",
+                    x=0.95, y=0.05,
+                    showarrow=False,
+                    font=dict(size=14, color="gray"),
+                    opacity=0.5
+                )
+
+                # Actualizar el diseño
+                fig.update_layout(
+                    title=f"Precio Histórico {'Ajustado' if close_price_type == 'Ajustado' else 'No Ajustado'} de {ticker} con SMA de {sma_window} días",
+                    xaxis_title="Fecha",
+                    yaxis_title="Precio (USD)",
+                    legend_title="Leyenda",
+                    template="plotly_dark",
+                    hovermode="x unified"
+                )
+
+                # Mostrar el gráfico de Plotly
                 st.plotly_chart(fig, use_container_width=True)
 
-                # Add the rest of your plotting code...
+                # 2. Gráfico de líneas con Plotly: Porcentaje de dispersión histórico
+                st.write("### 📉 Porcentaje de Dispersión Histórico")
+                fig_dispersion = go.Figure()
+
+                # Gráfico del porcentaje de dispersión
+                fig_dispersion.add_trace(go.Scatter(
+                    x=data.index,
+                    y=data['Porcentaje_Dispersión'],
+                    mode='lines',
+                    name='Porcentaje de Dispersión'
+                ))
+
+                # Añadir una línea horizontal roja en y=0
+                fig_dispersion.add_shape(
+                    type="line",
+                    x0=data.index.min(),
+                    x1=data.index.max(),
+                    y0=0,
+                    y1=0,
+                    line=dict(color="red", width=2),
+                )
+
+                # Añadir watermark
+                fig_dispersion.add_annotation(
+                    text="MTaurus. X: mtaurus_ok",
+                    xref="paper", yref="paper",
+                    x=0.95, y=0.05,
+                    showarrow=False,
+                    font=dict(size=14, color="gray"),
+                    opacity=0.5
+                )
+
+                # Actualizar el diseño
+                fig_dispersion.update_layout(
+                    title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
+                    xaxis_title="Fecha",
+                    yaxis_title="Dispersión (%)",
+                    legend_title="Leyenda",
+                    template="plotly_dark",
+                    hovermode="x unified"
+                )
+
+                # Mostrar el gráfico de Plotly para el porcentaje de dispersión
+                st.plotly_chart(fig_dispersion, use_container_width=True)
+
+                # 3. Histograma con Seaborn/Matplotlib: Porcentaje de dispersión con percentiles
+                st.write("### 📊 Histograma de Porcentaje de Dispersión con Percentiles")
+                percentiles = [95, 85, 75, 50, 25, 15, 5]
+                percentile_values = np.percentile(data['Porcentaje_Dispersión'].dropna(), percentiles)
+
+                plt.figure(figsize=(10, 6))
+                sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100)
+
+                # Añadir líneas de percentiles
+                for percentile, value in zip(percentiles, percentile_values):
+                    plt.axvline(value, color='red', linestyle='--')
+                    plt.text(
+                        value,
+                        plt.ylim()[1] * 0.9,
+                        f'{percentile}º Percentil',
+                        color='red',
+                        rotation='vertical',
+                        verticalalignment='center',
+                        horizontalalignment='right'
+                    )
+
+                # Añadir watermark
+                plt.text(
+                    0.95, 0.05, "MTaurus. X: mtaurus_ok",
+                    fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure
+                )
+
+                plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde SMA de {sma_window} días')
+                plt.xlabel('Dispersión (%)')
+                plt.ylabel('Frecuencia')
+                plt.tight_layout()
+                st.pyplot(plt)
+                plt.clf()  # Limpiar la figura para evitar superposiciones
+
+                # 4. Personalización del Histograma
+                st.write("### 🎨 Personalización del Histograma")
+                num_bins = st.slider("Seleccione el número de bins para el histograma", min_value=10, max_value=100, value=50, key="bins_slider")
+                hist_color = st.color_picker("Elija un color para el histograma", value='#1f77b4', key="color_picker")
+
+                # Histograma con Plotly: Porcentaje de dispersión con personalización del usuario
+                st.write("### 📊 Histograma de Porcentaje de Dispersión")
+                fig_hist = go.Figure()
+
+                # Añadir la traza del histograma
+                fig_hist.add_trace(
+                    go.Histogram(
+                        x=data['Porcentaje_Dispersión'].dropna(),
+                        nbinsx=num_bins,
+                        marker_color=hist_color,
+                        opacity=0.75,
+                        name="Histograma"
+                    )
+                )
+
+                # Añadir líneas de percentiles como formas verticales
+                for percentile, value in zip(percentiles, percentile_values):
+                    fig_hist.add_vline(
+                        x=value,
+                        line=dict(color="red", width=2, dash="dash"),
+                        annotation_text=f'{percentile}º Percentil',
+                        annotation_position="top",
+                        annotation=dict(
+                            textangle=-90,
+                            font=dict(color="red")
+                        )
+                    )
+
+                # Añadir watermark
+                fig_hist.add_annotation(
+                    text="MTaurus. X: mtaurus_ok",
+                    xref="paper", yref="paper",
+                    x=0.95, y=0.05,
+                    showarrow=False,
+                    font=dict(size=14, color="gray"),
+                    opacity=0.5
+                )
+
+                # Actualizar el diseño para interactividad y personalización
+                fig_hist.update_layout(
+                    title=f'Histograma del Porcentaje de Dispersión de {ticker} ({close_price_type})',
+                    xaxis_title='Dispersión (%)',
+                    yaxis_title='Frecuencia',
+                    bargap=0.1,
+                    template="plotly_dark",
+                    hovermode="x unified"
+                )
+
+                # Mostrar el gráfico de Plotly para el histograma
+                st.plotly_chart(fig_hist, use_container_width=True)
 
 else:
     st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
+# Footer
 st.markdown("---")
 st.markdown("© 2024 MTaurus. Todos los derechos reservados.")
