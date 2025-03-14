@@ -229,6 +229,23 @@ with tab1:
 # Pestaña 2: Análisis de Fiabilidad de MA
 with tab2:
     st.header("Análisis de Fiabilidad de Medias Móviles")
+    
+    # Explicación para usuarios no técnicos
+    st.markdown("""
+    ### ¿Qué hace esta pestaña?
+    Esta herramienta te ayuda a encontrar la mejor **media móvil** (MA) para tomar decisiones sobre una acción (como comprar o vender). Una media móvil es simplemente un promedio del precio de la acción durante un número determinado de días, y puede actuar como una señal para adivinar cuándo el precio podría cambiar de dirección.
+
+    Aquí probamos diferentes longitudes de MA (por ejemplo, 5 días, 10 días, 20 días, etc.) y vemos cuál es la más "fiable". Una MA fiable es aquella que, históricamente, ha dado señales claras de cuándo el precio sube o baja, y luego cambia de dirección con frecuencia. Esto puede ayudarte a decidir cuándo entrar (comprar) o salir (vender) de una acción.
+    """)
+
+    st.markdown("""
+    ### ¿Qué es la "Tasa de Reversión"?
+    La **tasa de reversión** mide qué tan seguido el precio de la acción cambia de dirección justo después de cruzar la media móvil:
+    - Si el precio sube por encima de la MA y luego baja rápidamente, eso es una "reversión".
+    - Si el precio baja por debajo de la MA y luego sube rápidamente, también es una "reversión".
+    Una tasa alta significa que la MA es buena para señalar estos cambios, lo que la hace útil para decidir cuándo actuar. Elegimos la MA con la tasa de reversión más alta como la más "fiable".
+    """)
+
     ticker_ma = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_ma").upper()
     
     if ticker_ma:
@@ -249,6 +266,8 @@ with tab2:
         min_ma_length = st.number_input("Longitud mínima de MA", min_value=1, value=5, key="min_ma")
         max_ma_length = st.number_input("Longitud máxima de MA", min_value=min_ma_length + 1, value=50, key="max_ma")
         step_ma_length = st.number_input("Paso entre longitudes de MA", min_value=1, value=5, key="step_ma")
+        close_price_type_ma = st.selectbox("📈 Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"], key="price_type_ma")
+        apply_ratio_ma = st.checkbox("🔄 Ajustar precio por el ratio YPFD.BA/YPF", key="ratio_ma")
 
         start_date_ma = pd.to_datetime(start_date_ma)
         end_date_ma = pd.to_datetime(end_date_ma)
@@ -256,44 +275,102 @@ with tab2:
         if start_date_ma > end_date_ma:
             st.error("La fecha de inicio no puede ser posterior a la fecha de fin.")
         else:
-            close_price_type_ma = st.selectbox("📈 Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"], key="price_type_ma")
-            data_ma = download_data(ticker_ma, start_date_ma, end_date_ma)
+            # Botón de confirmación
+            if st.button("Confirmar Análisis", key="confirm_ma"):
+                data_ma = download_data(ticker_ma, start_date_ma, end_date_ma)
 
-            if data_ma is not None:
-                adj_close_col_main = f"Adj Close {ticker_ma}"
-                close_col_main = f"Close {ticker_ma}"
-                price_column_ma = adj_close_col_main if (close_price_type_ma == "Ajustado" and adj_close_col_main in data_ma.columns) else close_col_main
+                if data_ma is not None:
+                    adj_close_col_main = f"Adj Close {ticker_ma}"
+                    close_col_main = f"Close {ticker_ma}"
 
-                if price_column_ma not in data_ma.columns:
-                    st.error(f"La columna seleccionada **{price_column_ma}** no existe en los datos.")
-                else:
-                    ma_lengths = range(min_ma_length, max_ma_length + 1, step_ma_length)
-                    reliability_df = analyze_ma_reliability(data_ma, price_column_ma, ma_lengths)
+                    if apply_ratio_ma:
+                        st.subheader("🔄 Aplicando ajuste por ratio YPFD.BA/YPF")
+                        ypfd_ba_ticker = "YPFD.BA"
+                        ypf_ticker = "YPF"
+                        ypfd_ba_data = download_data(ypfd_ba_ticker, start_date_ma, end_date_ma)
+                        ypf_data = download_data(ypf_ticker, start_date_ma, end_date_ma)
 
-                    st.write("### Resultados del Análisis de Fiabilidad")
-                    st.dataframe(reliability_df)
+                        if ypfd_ba_data is not None and ypf_data is not None:
+                            adj_close_col_ypfd = f"Adj Close {ypfd_ba_ticker}"
+                            adj_close_col_ypf = f"Adj Close {ypf_ticker}"
+                            close_col_ypfd = f"Close {ypfd_ba_ticker}"
+                            close_col_ypf = f"Close {ypf_ticker}"
 
-                    # Visualización: Tasa de Reversión por Longitud de MA
-                    fig_reliability = go.Figure()
-                    fig_reliability.add_trace(go.Scatter(
-                        x=reliability_df['MA_Length'],
-                        y=reliability_df['Reversal_Rate'],
-                        mode='lines+markers',
-                        name='Tasa de Reversión'
-                    ))
-                    fig_reliability.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
-                    fig_reliability.update_layout(
-                        title=f"Tasa de Reversión por Longitud de MA para {ticker_ma}",
-                        xaxis_title="Longitud de MA (días)",
-                        yaxis_title="Tasa de Reversión",
-                        template="plotly_dark",
-                        hovermode="x unified"
+                            ypfd_price_col = adj_close_col_ypfd if adj_close_col_ypfd in ypfd_ba_data.columns else close_col_ypfd
+                            ypf_price_col = adj_close_col_ypf if adj_close_col_ypf in ypf_data.columns else close_col_ypf
+
+                            if ypfd_price_col in ypfd_ba_data.columns and ypf_price_col in ypf_data.columns:
+                                ypfd_ba_data = ypfd_ba_data.fillna(method='ffill').fillna(method='bfill')
+                                ypf_data = ypf_data.fillna(method='ffill').fillna(method='bfill')
+                                ratio = ypfd_ba_data[ypfd_price_col] / ypf_data[ypf_price_col]
+                                ratio = ratio.reindex(data_ma.index).fillna(method='ffill').fillna(method='bfill')
+
+                                if adj_close_col_main in data_ma.columns:
+                                    data_ma['Adj Close Ajustado'] = data_ma[adj_close_col_main] / ratio
+                                else:
+                                    st.warning(f"No se encontró 'Adj Close' para {ticker_ma}. Usando 'Close'.")
+                                    data_ma['Adj Close Ajustado'] = data_ma[close_col_main] / ratio
+                                data_ma['Close Ajustado'] = data_ma[close_col_main] / ratio
+                            else:
+                                st.error(f"No se encontraron columnas de precio válidas para {ypfd_ba_ticker} o {ypf_ticker}.")
+                        else:
+                            st.error("No se pudieron descargar los datos necesarios para aplicar el ratio.")
+                    else:
+                        if adj_close_col_main in data_ma.columns:
+                            data_ma['Adj Close Original'] = data_ma[adj_close_col_main]
+                        else:
+                            st.warning(f"No se encontró 'Adj Close' para {ticker_ma}. Usando 'Close'.")
+                            data_ma['Adj Close Original'] = data_ma[close_col_main]
+                        data_ma['Close Original'] = data_ma[close_col_main]
+
+                    price_column_ma = (
+                        'Adj Close Ajustado' if (apply_ratio_ma and close_price_type_ma == "Ajustado" and 'Adj Close Ajustado' in data_ma.columns)
+                        else 'Close Ajustado' if (apply_ratio_ma and 'Close Ajustado' in data_ma.columns)
+                        else 'Adj Close Original' if (not apply_ratio_ma and close_price_type_ma == "Ajustado" and 'Adj Close Original' in data_ma.columns)
+                        else 'Close Original' if 'Close Original' in data_ma.columns
+                        else close_col_main
                     )
-                    st.plotly_chart(fig_reliability, use_container_width=True)
 
-                    # Identificar la MA más "fiable"
-                    best_ma = reliability_df.loc[reliability_df['Reversal_Rate'].idxmax()]
-                    st.write(f"**MA más fiable**: {int(best_ma['MA_Length'])} días (Tasa de Reversión: {best_ma['Reversal_Rate']:.2%})")
+                    if price_column_ma not in data_ma.columns:
+                        st.error(f"La columna seleccionada **{price_column_ma}** no existe en los datos.")
+                    else:
+                        ma_lengths = range(min_ma_length, max_ma_length + 1, step_ma_length)
+                        reliability_df = analyze_ma_reliability(data_ma, price_column_ma, ma_lengths)
+
+                        st.write("### Resultados del Análisis de Fiabilidad")
+                        st.markdown("""
+                        Aquí tienes una tabla con los resultados:
+                        - **MA_Length**: El número de días de la media móvil.
+                        - **Crossovers**: Cuántas veces el precio cruzó la MA (hacia arriba o abajo).
+                        - **Reversals**: Cuántas veces el precio cambió de dirección justo después de cruzar la MA.
+                        - **Reversal_Rate**: El porcentaje de cruces que terminaron en una reversión (más alto es mejor).
+                        """)
+                        st.dataframe(reliability_df)
+
+                        # Visualización: Tasa de Reversión por Longitud de MA
+                        fig_reliability = go.Figure()
+                        fig_reliability.add_trace(go.Scatter(
+                            x=reliability_df['MA_Length'],
+                            y=reliability_df['Reversal_Rate'],
+                            mode='lines+markers',
+                            name='Tasa de Reversión'
+                        ))
+                        fig_reliability.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
+                        fig_reliability.update_layout(
+                            title=f"Tasa de Reversión por Longitud de MA para {ticker_ma}",
+                            xaxis_title="Longitud de MA (días)",
+                            yaxis_title="Tasa de Reversión",
+                            template="plotly_dark",
+                            hovermode="x unified"
+                        )
+                        st.plotly_chart(fig_reliability, use_container_width=True)
+
+                        # Identificar la MA más "fiable"
+                        best_ma = reliability_df.loc[reliability_df['Reversal_Rate'].idxmax()]
+                        st.markdown(f"""
+                        ### ¿Cuál es la mejor MA?
+                        Basado en los datos, la media móvil de **{int(best_ma['MA_Length'])} días** es la más fiable para {ticker_ma}. Tiene una tasa de reversión de **{best_ma['Reversal_Rate']:.2%}**, lo que significa que el {best_ma['Reversal_Rate']:.0%} de las veces que el precio cruza esta MA, cambia de dirección al día siguiente. Esto podría ser una buena señal para decidir cuándo comprar (si cruza hacia arriba) o vender (si cruza hacia abajo).
+                        """)
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
