@@ -193,15 +193,63 @@ with tab1:
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
+                    # Inside Tab 1, replace the existing "Porcentaje de Dispersión Histórico" section with this:
                     # Visualización 2: Porcentaje de Dispersión Histórico
                     st.write("### 📉 Porcentaje de Dispersión Histórico")
                     fig_dispersion = go.Figure()
                     fig_dispersion.add_trace(go.Scatter(x=data.index, y=data['Porcentaje_Dispersión'], mode='lines', name='Porcentaje de Dispersión'))
+                    
+                    # Línea de promedio histórico (azul)
+                    historical_mean = data['Porcentaje_Dispersión'].mean()
+                    fig_dispersion.add_shape(
+                        type="line", x0=data.index.min(), x1=data.index.max(), y0=historical_mean, y1=historical_mean,
+                        line=dict(color="blue", width=1, dash="dash"), name="Promedio Histórico"
+                    )
+                    fig_dispersion.add_annotation(
+                        x=data.index.max(), y=historical_mean, text=f"Promedio: {historical_mean:.2f}%",
+                        showarrow=True, arrowhead=1, ax=20, ay=-20, font=dict(color="blue")
+                    )
+                    
+                    # Percentiles dinámicos
+                    lower_percentile = st.slider("Seleccione el percentil inferior", min_value=1, max_value=49, value=5, key="lower_percentile")
+                    upper_percentile = st.slider("Seleccione el percentil superior", min_value=51, max_value=99, value=95, key="upper_percentile")
+                    
+                    lower_value = np.percentile(data['Porcentaje_Dispersión'].dropna(), lower_percentile)
+                    upper_value = np.percentile(data['Porcentaje_Dispersión'].dropna(), upper_percentile)
+                    
+                    # Línea de percentil inferior (rojo)
+                    fig_dispersion.add_shape(
+                        type="line", x0=data.index.min(), x1=data.index.max(), y0=lower_value, y1=lower_value,
+                        line=dict(color="red", width=1, dash="dash"), name=f"Percentil {lower_percentile}"
+                    )
+                    fig_dispersion.add_annotation(
+                        x=data.index.max(), y=lower_value, text=f"P{lower_percentile}: {lower_value:.2f}%",
+                        showarrow=True, arrowhead=1, ax=20, ay=20, font=dict(color="red")
+                    )
+                    
+                    # Línea de percentil superior (verde)
+                    fig_dispersion.add_shape(
+                        type="line", x0=data.index.min(), x1=data.index.max(), y0=upper_value, y1=upper_value,
+                        line=dict(color="green", width=1, dash="dash"), name=f"Percentil {upper_percentile}"
+                    )
+                    fig_dispersion.add_annotation(
+                        x=data.index.max(), y=upper_value, text=f"P{upper_percentile}: {upper_value:.2f}%",
+                        showarrow=True, arrowhead=1, ax=20, ay=-20, font=dict(color="green")
+                    )
+                    
+                    # Línea cero (como en el original)
                     fig_dispersion.add_shape(type="line", x0=data.index.min(), x1=data.index.max(), y0=0, y1=0, line=dict(color="red", width=2))
-                    fig_dispersion.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
+                    
+                    # Anotación de MTaurus
+                    fig_dispersion.add_annotation(
+                        text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05,
+                        showarrow=False, font=dict(size=14, color="gray"), opacity=0.5
+                    )
+                    
                     fig_dispersion.update_layout(
                         title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
-                        xaxis_title="Fecha", yaxis_title="Dispersión (%)", legend_title="Leyenda", template="plotly_dark", hovermode="x unified"
+                        xaxis_title="Fecha", yaxis_title="Dispersión (%)", legend_title="Leyenda",
+                        template="plotly_dark", hovermode="x unified"
                     )
                     st.plotly_chart(fig_dispersion, use_container_width=True)
 
