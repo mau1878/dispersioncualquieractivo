@@ -48,8 +48,8 @@ def calculate_moving_average(data, price_column, ma_type, ma_length):
         )
     return None
 
-# Nueva función para analizar la viabilidad de las MAs como estrategia de trading (con correcciones)
-def analyze_ma_trading_potential(data, price_column, ma_lengths, ma_type, look_forward_days):
+# Nueva función para analizar la estrategia basada en percentiles de dispersión
+def analyze_ma_percentile_strategy(data, price_column, ma_lengths, ma_type, look_forward_days, low_percentile, high_percentile):
     if len(data) < look_forward_days + 1:
         st.error(f"El conjunto de datos es demasiado corto para analizar con {look_forward_days} días de proyección. Se necesitan al menos {look_forward_days + 1} días de datos.")
         return pd.DataFrame()
@@ -59,45 +59,69 @@ def analyze_ma_trading_potential(data, price_column, ma_lengths, ma_type, look_f
         ma_label = f'{ma_type}_{ma_length}'
         data[ma_label] = calculate_moving_average(data, price_column, ma_type, ma_length)
         
-        # Detectar cruces (crossovers y crossunders)
-        data['Above_MA'] = data[price_column] > data[ma_label]
-        data['Crossover'] = data['Above_MA'].diff().fillna(False)
+        # Calcular la dispersión
+        data['Dispersion'] = (data[price_column] - data[ma_label]) / data[ma_label] * 100
         
-        # Identificar señales de compra (cruce hacia abajo) y venta (cruce hacia arriba)
+        # Determinar los percentiles de dispersión históricos
+        dispersion_data = data['Dispersion'].dropna()
+        if len(dispersion_data) < 10:  # Asegurarse de que haya suficientes datos para calcular percentiles
+            st.warning(f"No hay suficientes datos de dispersión para {ma_type} de longitud {ma_length}.")
+            continue
+        low_threshold = np.percentile(dispersion_data, low_percentile)
+        high_threshold = np.percentile(dispersion_data, high_percentile)
+        
+        # Identificar señales de compra y venta basadas en percentiles
         buy_signals = 0
         sell_signals = 0
-        max_gains = []
-        max_losses = []
+        buy_successes = 0
+        sell_successes = 0
+        buy_gains = []
+        sell_gains = []
         
         for i in range(len(data) - look_forward_days):
-            if data['Crossover'].iloc[i]:
-                initial_price = data[price_column].iloc[i]
-                future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
-                # Verificar que los datos sean válidos
-                if pd.isna(initial_price) or initial_price == 0 or future_prices.isna().any():
-                    continue
-                
-                if data['Above_MA'].iloc[i]:  # Cruce hacia arriba (señal de venta)
-                    sell_signals += 1
-                    max_loss = ((future_prices.min() - initial_price) / initial_price) * 100
-                    max_losses.append(max_loss)
-                else:  # Cruce hacia abajo (señal de compra)
-                    buy_signals += 1
-                    max_gain = ((future_prices.max() - initial_price) / initial_price) * 100
-                    max_gains.append(max_gain)
+            current_dispersion = data['Dispersion'].iloc[i]
+            initial_price = data[price_column].iloc[i]
+            future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
+            
+            # Verificar que los datos sean válidos
+            if pd.isna(current_dispersion) or pd.isna(initial_price) or initial_price == 0 or future_prices.isna().any():
+                continue
+            
+            # Señal de compra: dispersión por debajo del percentil bajo
+            if current_dispersion <= low_threshold:
+                buy_signals += 1
+                future_max = future_prices.max()
+                gain = (future_max - initial_price) / initial_price * 100
+                buy_gains.append(gain)
+                if future_max > initial_price:  # Éxito si el precio sube
+                    buy_successes += 1
+            
+            # Señal de venta: dispersión por encima del percentil alto
+            elif current_dispersion >= high_threshold:
+                sell_signals += 1
+                future_min = future_prices.min()
+                loss = (future_min - initial_price) / initial_price * 100
+                sell_gains.append(loss)
+                if future_min < initial_price:  # Éxito si el precio baja
+                    sell_successes += 1
         
-        if not buy_signals and not sell_signals:
-            st.warning(f"No se encontraron señales de compra o venta para {ma_type} de longitud {ma_length}. Es posible que no haya suficientes cruces en los datos.")
+        if buy_signals == 0 and sell_signals == 0:
+            st.warning(f"No se encontraron señales de compra o venta para {ma_type} de longitud {ma_length} con los percentiles seleccionados.")
+            continue
         
-        avg_max_gain = np.mean(max_gains) if max_gains else 0
-        avg_max_loss = np.mean(max_losses) if max_losses else 0
+        buy_success_rate = (buy_successes / buy_signals * 100) if buy_signals > 0 else 0
+        sell_success_rate = (sell_successes / sell_signals * 100) if sell_signals > 0 else 0
+        avg_buy_gain = np.mean(buy_gains) if buy_gains else 0
+        avg_sell_gain = np.mean(sell_gains) if sell_gains else 0
         
         results.append({
             'MA_Length': ma_length,
             'Buy_Signals': buy_signals,
-            'Avg_Max_Gain (%)': avg_max_gain,
+            'Buy_Success_Rate (%)': buy_success_rate,
+            'Avg_Buy_Gain (%)': avg_buy_gain,
             'Sell_Signals': sell_signals,
-            'Avg_Max_Loss (%)': avg_max_loss
+            'Sell_Success_Rate (%)': sell_success_rate,
+            'Avg_Sell_Gain (%)': avg_sell_gain
         })
     
     return pd.DataFrame(results)
@@ -107,7 +131,7 @@ st.title("📈 Análisis de Medias Móviles y Dispersión de Precios - MTaurus")
 st.markdown("### 🚀 Sigue nuestro trabajo en [Twitter](https://twitter.com/MTaurus_ok)")
 
 # Crear pestañas
-tab1, tab2 = st.tabs(["Análisis Original", "Análisis de Trading con MA"])
+tab1, tab2 = st.tabs(["Análisis Original", "Análisis de Trading con Percentiles de Dispersión"])
 
 # Pestaña 1: Análisis Original (sin cambios)
 with tab1:
@@ -404,19 +428,19 @@ with tab1:
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
-# Pestaña 2: Análisis de Trading con MA (modificado con correcciones)
+# Pestaña 2: Análisis de Trading con Percentiles de Dispersión
 with tab2:
-    st.header("Análisis de Trading con Medias Móviles")
+    st.header("Análisis de Trading con Percentiles de Dispersión")
     
     st.markdown("""
     ### ¿Qué hace esta pestaña?
-    Esta herramienta evalúa medias móviles (MA) para identificar las más útiles en una estrategia de trading. Analizamos:
-    - **Señales de Compra**: Cuando el precio cruza hacia abajo de la MA (potencial oportunidad de compra).
-    - **Señales de Venta**: Cuando el precio cruza hacia arriba de la MA (potencial oportunidad de venta).
+    Esta herramienta evalúa medias móviles (MA) para una estrategia de trading basada en la dispersión del precio respecto a la MA. Analizamos:
+    - **Señales de Compra**: Cuando la dispersión (diferencia porcentual entre el precio y la MA) cae por debajo de un percentil bajo (e.g., 5º percentil), indicando que el precio está inusualmente bajo.
+    - **Señales de Venta**: Cuando la dispersión sube por encima de un percentil alto (e.g., 95º percentil), indicando que el precio está inusualmente alto.
     Para cada señal, calculamos:
-    - La **ganancia máxima promedio** después de una señal de compra (en los próximos N días).
-    - La **pérdida máxima promedio** después de una señal de venta (en los próximos N días).
-    Esto te ayuda a elegir una MA que ofrezca buenas oportunidades de ganancia con un riesgo controlado.
+    - La **tasa de éxito** de las señales de compra (qué tan seguido el precio sube después de una señal de compra) y de venta (qué tan seguido el precio baja después de una señal de venta).
+    - La **ganancia promedio** después de una señal de compra y la **pérdida promedio** después de una señal de venta (en los próximos N días).
+    Esto te ayuda a elegir una MA que ofrezca señales confiables para comprar y vender basadas en extremos de dispersión.
     """)
 
     ticker_ma = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_ma").upper()
@@ -441,6 +465,8 @@ with tab2:
         max_ma_length = st.number_input("Longitud máxima de MA", min_value=min_ma_length + 1, value=50, key="max_ma")
         step_ma_length = st.number_input("Paso entre longitudes de MA", min_value=1, value=5, key="step_ma")
         look_forward_days = st.number_input("Días de proyección (N días después de la señal)", min_value=1, value=5, key="look_forward_days")
+        low_percentile = st.slider("Percentil bajo para señales de compra", min_value=1, max_value=49, value=5, key="low_percentile_ma")
+        high_percentile = st.slider("Percentil alto para señales de venta", min_value=51, max_value=99, value=95, key="high_percentile_ma")
         close_price_type_ma = st.selectbox("📈 Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"], key="price_type_ma")
         apply_ratio_ma = st.checkbox("🔄 Ajustar precio por el ratio YPFD.BA/YPF", key="ratio_ma")
 
@@ -509,35 +535,53 @@ with tab2:
                         st.error(f"La columna seleccionada **{price_column_ma}** no existe en los datos.")
                     else:
                         ma_lengths = range(min_ma_length, max_ma_length + 1, step_ma_length)
-                        trading_df = analyze_ma_trading_potential(data_ma, price_column_ma, ma_lengths, ma_type_ma, look_forward_days)
+                        trading_df = analyze_ma_percentile_strategy(
+                            data_ma, price_column_ma, ma_lengths, ma_type_ma, look_forward_days, low_percentile, high_percentile
+                        )
 
                         if not trading_df.empty:
                             st.write("### Resultados del Análisis de Trading")
                             st.markdown("""
                             Aquí tienes una tabla con los resultados:
                             - **MA_Length**: El número de días de la media móvil.
-                            - **Buy_Signals**: Cuántas veces el precio cruzó hacia abajo de la MA (señal de compra).
-                            - **Avg_Max_Gain (%)**: Ganancia máxima promedio después de una señal de compra (en los próximos N días).
-                            - **Sell_Signals**: Cuántas veces el precio cruzó hacia arriba de la MA (señal de venta).
-                            - **Avg_Max_Loss (%)**: Pérdida máxima promedio después de una señal de venta (en los próximos N días).
+                            - **Buy_Signals**: Cuántas veces la dispersión cayó por debajo del percentil bajo (señal de compra).
+                            - **Buy_Success_Rate (%)**: Porcentaje de señales de compra que resultaron en un aumento del precio.
+                            - **Avg_Buy_Gain (%)**: Ganancia promedio después de una señal de compra (en los próximos N días).
+                            - **Sell_Signals**: Cuántas veces la dispersión subió por encima del percentil alto (señal de venta).
+                            - **Sell_Success_Rate (%)**: Porcentaje de señales de venta que resultaron en una caída del precio.
+                            - **Avg_Sell_Gain (%)**: Pérdida promedio después de una señal de venta (en los próximos N días).
                             """)
                             st.dataframe(trading_df)
 
-                            # Visualización: Ganancia y Pérdida Máxima Promedio por Longitud de MA
+                            # Visualización: Tasa de Éxito y Ganancia Promedio por Longitud de MA
                             fig_trading = go.Figure()
                             fig_trading.add_trace(go.Scatter(
                                 x=trading_df['MA_Length'],
-                                y=trading_df['Avg_Max_Gain (%)'],
+                                y=trading_df['Buy_Success_Rate (%)'],
                                 mode='lines+markers',
-                                name='Ganancia Máx. Promedio (%)',
+                                name='Tasa de Éxito Compra (%)',
                                 line=dict(color='green')
                             ))
                             fig_trading.add_trace(go.Scatter(
                                 x=trading_df['MA_Length'],
-                                y=trading_df['Avg_Max_Loss (%)'],
+                                y=trading_df['Sell_Success_Rate (%)'],
                                 mode='lines+markers',
-                                name='Pérdida Máx. Promedio (%)',
+                                name='Tasa de Éxito Venta (%)',
                                 line=dict(color='red')
+                            ))
+                            fig_trading.add_trace(go.Scatter(
+                                x=trading_df['MA_Length'],
+                                y=trading_df['Avg_Buy_Gain (%)'],
+                                mode='lines+markers',
+                                name='Ganancia Promedio Compra (%)',
+                                line=dict(color='blue', dash='dash')
+                            ))
+                            fig_trading.add_trace(go.Scatter(
+                                x=trading_df['MA_Length'],
+                                y=trading_df['Avg_Sell_Gain (%)'],
+                                mode='lines+markers',
+                                name='Pérdida Promedio Venta (%)',
+                                line=dict(color='orange', dash='dash')
                             ))
                             fig_trading.add_annotation(
                                 text="MTaurus. X: mtaurus_ok", 
@@ -550,7 +594,7 @@ with tab2:
                                 opacity=0.5
                             )
                             fig_trading.update_layout(
-                                title=f"Ganancia y Pérdida Máxima Promedio por Longitud de {ma_type_ma} para {ticker_ma}",
+                                title=f"Tasa de Éxito y Ganancia/Pérdida Promedio por Longitud de {ma_type_ma} para {ticker_ma}",
                                 xaxis_title="Longitud de MA (días)",
                                 yaxis_title="Porcentaje (%)",
                                 template="plotly_dark",
@@ -560,22 +604,24 @@ with tab2:
                             st.plotly_chart(fig_trading, use_container_width=True)
 
                             # Identificar la MA más "viable" para trading
-                            trading_df['Gain_Loss_Ratio'] = np.where(
-                                (trading_df['Avg_Max_Gain (%)'] > 0) & (trading_df['Avg_Max_Loss (%)'] != 0),
-                                trading_df['Avg_Max_Gain (%)'] / abs(trading_df['Avg_Max_Loss (%)']),
-                                np.nan
-                            )
-                            if trading_df['Gain_Loss_Ratio'].notna().any():
-                                best_ma = trading_df.loc[trading_df['Gain_Loss_Ratio'].idxmax()]
+                            # Criterio: Combinar tasa de éxito y ganancia promedio (ponderado)
+                            trading_df['Score'] = (
+                                (trading_df['Buy_Success_Rate (%)'] * trading_df['Avg_Buy_Gain (%)']) +
+                                (trading_df['Sell_Success_Rate (%)'] * abs(trading_df['Avg_Sell_Gain (%)']))
+                            ) / 2
+                            if trading_df['Score'].notna().any():
+                                best_ma = trading_df.loc[trading_df['Score'].idxmax()]
                                 st.markdown(f"""
-                                ### ¿Cuál es la mejor {ma_type_ma} para trading?
+                                ### ¿Cuál es la mejor {ma_type_ma} para esta estrategia?
                                 Basado en los datos, la {ma_type_ma} de **{int(best_ma['MA_Length'])} días** parece ser la más viable para {ticker_ma}. 
-                                - **Ganancia Máxima Promedio**: {best_ma['Avg_Max_Gain (%)']:.2f}% después de una señal de compra.
-                                - **Pérdida Máxima Promedio**: {best_ma['Avg_Max_Loss (%)']:.2f}% después de una señal de venta.
-                                Esto sugiere que podrías comprar cuando el precio cruza hacia abajo de esta MA y esperar una ganancia promedio de {best_ma['Avg_Max_Gain (%)']:.2f}% en los próximos {look_forward_days} días, mientras que las señales de venta tienen un riesgo promedio de {best_ma['Avg_Max_Loss (%)']:.2f}%.
+                                - **Tasa de Éxito Compra**: {best_ma['Buy_Success_Rate (%)']:.2f}% (el precio sube después de una señal de compra).
+                                - **Ganancia Promedio Compra**: {best_ma['Avg_Buy_Gain (%)']:.2f}% en los próximos {look_forward_days} días.
+                                - **Tasa de Éxito Venta**: {best_ma['Sell_Success_Rate (%)']:.2f}% (el precio baja después de una señal de venta).
+                                - **Pérdida Promedio Venta**: {best_ma['Avg_Sell_Gain (%)']:.2f}% en los próximos {look_forward_days} días.
+                                Esto sugiere que podrías comprar cuando la dispersión cae por debajo del {low_percentile}º percentil y vender cuando sube por encima del {high_percentile}º percentil, con las tasas de éxito y ganancias promedio indicadas.
                                 """)
                             else:
-                                st.warning("No se pudo determinar una MA óptima porque no hay suficientes señales válidas para calcular un ratio de ganancia/pérdida.")
+                                st.warning("No se pudo determinar una MA óptima porque no hay suficientes señales válidas para calcular un puntaje.")
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
