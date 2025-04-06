@@ -195,127 +195,160 @@ with tab1:
 
                     # Inside Tab 1, replace the existing "Porcentaje de Dispersión Histórico" section with this:
                     # Visualización 2: Porcentaje de Dispersión Histórico
-                    st.write("### 📉 Porcentaje de Dispersión Histórico")
-                    
-                    # Verificar datos antes de graficar
-                    if data['Porcentaje_Dispersión'].dropna().empty:
-                        st.error("No hay datos válidos de dispersión para graficar.")
-                    else:
-                        fig_dispersion = go.Figure()
+                    # Visualización 2: Porcentaje de Dispersión Histórico
+                st.write("### 📉 Porcentaje de Dispersión Histórico")
+                
+                # Verificar datos antes de graficar
+                if data['Porcentaje_Dispersión'].dropna().empty:
+                    st.error("No hay datos válidos de dispersión para graficar.")
+                else:
+                    fig_dispersion = go.Figure()
+                    fig_dispersion.add_trace(go.Scatter(
+                        x=data.index, 
+                        y=data['Porcentaje_Dispersión'], 
+                        mode='lines', 
+                        name='Porcentaje de Dispersión',
+                        line=dict(color='lightgrey')
+                    ))
+                
+                    # Línea de promedio histórico (azul claro)
+                    historical_mean = data['Porcentaje_Dispersión'].mean()
+                    if not pd.isna(historical_mean):
+                        fig_dispersion.add_shape(
+                            type="line", 
+                            x0=data.index.min(), 
+                            x1=data.index.max(), 
+                            y0=historical_mean, 
+                            y1=historical_mean,
+                            line=dict(color="lightblue", width=1, dash="dash"),
+                        )
+                        # Dummy trace para la leyenda
                         fig_dispersion.add_trace(go.Scatter(
-                            x=data.index, 
-                            y=data['Porcentaje_Dispersión'], 
-                            mode='lines', 
-                            name='Porcentaje de Dispersión',
-                            line=dict(color='lightgrey')  # Asegurar visibilidad en tema oscuro
+                            x=[None], y=[None], mode='lines',
+                            line=dict(color="lightblue", width=1, dash="dash"),
+                            name=f"Promedio: {historical_mean:.2f}%",
+                            showlegend=True,
+                            opacity=0
                         ))
-                    
-                        # Línea de promedio histórico (azul)
-                        historical_mean = data['Porcentaje_Dispersión'].mean()
-                        if not pd.isna(historical_mean):
-                            fig_dispersion.add_shape(
-                                type="line", 
-                                x0=data.index.min(), 
-                                x1=data.index.max(), 
-                                y0=historical_mean, 
-                                y1=historical_mean,
-                                line=dict(color="lightblue", width=1, dash="dash"),
-                            )
-                            fig_dispersion.add_annotation(
-                                x=data.index.max(), 
-                                y=historical_mean, 
-                                text=f"Promedio: {historical_mean:.2f}%",
-                                showarrow=True, 
-                                arrowhead=1, 
-                                ax=20, 
-                                ay=-20, 
-                                font=dict(color="lightblue")
-                            )
-                        else:
-                            st.warning("No se pudo calcular el promedio histórico debido a datos insuficientes.")
-                    
-                        # Percentiles dinámicos
-                        lower_percentile = st.slider("Seleccione el percentil inferior", min_value=1, max_value=49, value=5, key="lower_percentile")
-                        upper_percentile = st.slider("Seleccione el percentil superior", min_value=51, max_value=99, value=95, key="upper_percentile")
-                    
-                        dispersion_data = data['Porcentaje_Dispersión'].dropna()
-                        lower_value = np.percentile(dispersion_data, lower_percentile)
-                        upper_value = np.percentile(dispersion_data, upper_percentile)
-                    
-                        # Línea de percentil inferior (rojo)
-                        fig_dispersion.add_shape(
-                            type="line", 
-                            x0=data.index.min(), 
-                            x1=data.index.max(), 
-                            y0=lower_value, 
-                            y1=lower_value,
-                            line=dict(color="red", width=1, dash="dash"),
-                        )
                         fig_dispersion.add_annotation(
                             x=data.index.max(), 
-                            y=lower_value, 
-                            text=f"P{lower_percentile}: {lower_value:.2f}%",
-                            showarrow=True, 
-                            arrowhead=1, 
-                            ax=20, 
-                            ay=20, 
-                            font=dict(color="red")
-                        )
-                    
-                        # Línea de percentil superior (verde)
-                        fig_dispersion.add_shape(
-                            type="line", 
-                            x0=data.index.min(), 
-                            x1=data.index.max(), 
-                            y0=upper_value, 
-                            y1=upper_value,
-                            line=dict(color="green", width=1, dash="dash"),
-                        )
-                        fig_dispersion.add_annotation(
-                            x=data.index.max(), 
-                            y=upper_value, 
-                            text=f"P{upper_percentile}: {upper_value:.2f}%",
+                            y=historical_mean, 
+                            text=f"Promedio: {historical_mean:.2f}%",
                             showarrow=True, 
                             arrowhead=1, 
                             ax=20, 
                             ay=-20, 
-                            font=dict(color="green")
+                            font=dict(color="lightblue")
                         )
-                    
-                        # Línea cero (como en el original)
-                        fig_dispersion.add_shape(
-                            type="line", 
-                            x0=data.index.min(), 
-                            x1=data.index.max(), 
-                            y0=0, 
-                            y1=0, 
-                            line=dict(color="red", width=2)
-                        )
-                    
-                        # Anotación de MTaurus
-                        fig_dispersion.add_annotation(
-                            text="MTaurus. X: mtaurus_ok", 
-                            xref="paper", 
-                            yref="paper", 
-                            x=0.95, 
-                            y=0.05,
-                            showarrow=False, 
-                            font=dict(size=14, color="gray"), 
-                            opacity=0.5
-                        )
-                    
-                        # Configuración del layout
-                        fig_dispersion.update_layout(
-                            title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
-                            xaxis_title="Fecha", 
-                            yaxis_title="Dispersión (%)", 
-                            legend_title="Leyenda",
-                            template="plotly_dark", 
-                            hovermode="x unified",
-                            showlegend=True  # Asegurar que la leyenda sea visible
-                        )
-                    
-                        st.plotly_chart(fig_dispersion, use_container_width=True)
+                    else:
+                        st.warning("No se pudo calcular el promedio histórico debido a datos insuficientes.")
+                
+                    # Percentiles dinámicos
+                    lower_percentile = st.slider("Seleccione el percentil inferior", min_value=1, max_value=49, value=5, key="lower_percentile")
+                    upper_percentile = st.slider("Seleccione el percentil superior", min_value=51, max_value=99, value=95, key="upper_percentile")
+                
+                    dispersion_data = data['Porcentaje_Dispersión'].dropna()
+                    lower_value = np.percentile(dispersion_data, lower_percentile)
+                    upper_value = np.percentile(dispersion_data, upper_percentile)
+                
+                    # Línea de percentil inferior (rojo)
+                    fig_dispersion.add_shape(
+                        type="line", 
+                        x0=data.index.min(), 
+                        x1=data.index.max(), 
+                        y0=lower_value, 
+                        y1=lower_value,
+                        line=dict(color="red", width=1, dash="dash"),
+                    )
+                    # Dummy trace para la leyenda
+                    fig_dispersion.add_trace(go.Scatter(
+                        x=[None], y=[None], mode='lines',
+                        line=dict(color="red", width=1, dash="dash"),
+                        name=f"P{lower_percentile}: {lower_value:.2f}%",
+                        showlegend=True,
+                        opacity=0
+                    ))
+                    fig_dispersion.add_annotation(
+                        x=data.index.max(), 
+                        y=lower_value, 
+                        text=f"P{lower_percentile}: {lower_value:.2f}%",
+                        showarrow=True, 
+                        arrowhead=1, 
+                        ax=20, 
+                        ay=20, 
+                        font=dict(color="red")
+                    )
+                
+                    # Línea de percentil superior (verde)
+                    fig_dispersion.add_shape(
+                        type="line", 
+                        x0=data.index.min(), 
+                        x1=data.index.max(), 
+                        y0=upper_value, 
+                        y1=upper_value,
+                        line=dict(color="green", width=1, dash="dash"),
+                    )
+                    # Dummy trace para la leyenda
+                    fig_dispersion.add_trace(go.Scatter(
+                        x=[None], y=[None], mode='lines',
+                        line=dict(color="green", width=1, dash="dash"),
+                        name=f"P{upper_percentile}: {upper_value:.2f}%",
+                        showlegend=True,
+                        opacity=0
+                    ))
+                    fig_dispersion.add_annotation(
+                        x=data.index.max(), 
+                        y=upper_value, 
+                        text=f"P{upper_percentile}: {upper_value:.2f}%",
+                        showarrow=True, 
+                        arrowhead=1, 
+                        ax=20, 
+                        ay=-20, 
+                        font=dict(color="green")
+                    )
+                
+                    # Línea cero (como en el original)
+                    fig_dispersion.add_shape(
+                        type="line", 
+                        x0=data.index.min(), 
+                        x1=data.index.max(), 
+                        y0=0, 
+                        y1=0, 
+                        line=dict(color="red", width=2)
+                    )
+                    # Dummy trace para la leyenda (línea cero)
+                    fig_dispersion.add_trace(go.Scatter(
+                        x=[None], y=[None], mode='lines',
+                        line=dict(color="red", width=2),
+                        name="Línea Cero",
+                        showlegend=True,
+                        opacity=0
+                    ))
+                
+                    # Anotación de MTaurus
+                    fig_dispersion.add_annotation(
+                        text="MTaurus. X: mtaurus_ok", 
+                        xref="paper", 
+                        yref="paper", 
+                        x=0.95, 
+                        y=0.05,
+                        showarrow=False, 
+                        font=dict(size=14, color="gray"), 
+                        opacity=0.5
+                    )
+                
+                    # Configuración del layout
+                    fig_dispersion.update_layout(
+                        title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
+                        xaxis_title="Fecha", 
+                        yaxis_title="Dispersión (%)", 
+                        legend_title="Leyenda",
+                        template="plotly_dark", 
+                        hovermode="x unified",
+                        showlegend=True  # Asegurar que la leyenda sea visible
+                    )
+                
+                    st.plotly_chart(fig_dispersion, use_container_width=True)
 
                     # Visualización 3: Histograma con Seaborn/Matplotlib
                     st.write("### 📊 Histograma de Porcentaje de Dispersión con Percentiles")
