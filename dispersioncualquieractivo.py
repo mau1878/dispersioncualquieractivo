@@ -48,8 +48,12 @@ def calculate_moving_average(data, price_column, ma_type, ma_length):
         )
     return None
 
-# Nueva función para analizar la viabilidad de las MAs como estrategia de trading
+# Nueva función para analizar la viabilidad de las MAs como estrategia de trading (con correcciones)
 def analyze_ma_trading_potential(data, price_column, ma_lengths, ma_type, look_forward_days):
+    if len(data) < look_forward_days + 1:
+        st.error(f"El conjunto de datos es demasiado corto para analizar con {look_forward_days} días de proyección. Se necesitan al menos {look_forward_days + 1} días de datos.")
+        return pd.DataFrame()
+
     results = []
     for ma_length in ma_lengths:
         ma_label = f'{ma_type}_{ma_length}'
@@ -60,27 +64,30 @@ def analyze_ma_trading_potential(data, price_column, ma_lengths, ma_type, look_f
         data['Crossover'] = data['Above_MA'].diff().fillna(False)
         
         # Identificar señales de compra (cruce hacia abajo) y venta (cruce hacia arriba)
-        buy_signals = 0  # Cruce hacia abajo (precio cae por debajo de la MA)
-        sell_signals = 0  # Cruce hacia arriba (precio sube por encima de la MA)
-        max_gains = []  # Ganancias máximas después de señales de compra
-        max_losses = []  # Pérdidas máximas después de señales de venta
+        buy_signals = 0
+        sell_signals = 0
+        max_gains = []
+        max_losses = []
         
         for i in range(len(data) - look_forward_days):
             if data['Crossover'].iloc[i]:
+                initial_price = data[price_column].iloc[i]
+                future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
+                # Verificar que los datos sean válidos
+                if pd.isna(initial_price) or initial_price == 0 or future_prices.isna().any():
+                    continue
+                
                 if data['Above_MA'].iloc[i]:  # Cruce hacia arriba (señal de venta)
                     sell_signals += 1
-                    # Calcular la pérdida máxima en los próximos look_forward_days
-                    future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
-                    initial_price = data[price_column].iloc[i]
-                    max_loss = ((future_prices.min() - initial_price) / initial_price) * 100  # En porcentaje
+                    max_loss = ((future_prices.min() - initial_price) / initial_price) * 100
                     max_losses.append(max_loss)
                 else:  # Cruce hacia abajo (señal de compra)
                     buy_signals += 1
-                    # Calcular la ganancia máxima en los próximos look_forward_days
-                    future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
-                    initial_price = data[price_column].iloc[i]
-                    max_gain = ((future_prices.max() - initial_price) / initial_price) * 100  # En porcentaje
+                    max_gain = ((future_prices.max() - initial_price) / initial_price) * 100
                     max_gains.append(max_gain)
+        
+        if not buy_signals and not sell_signals:
+            st.warning(f"No se encontraron señales de compra o venta para {ma_type} de longitud {ma_length}. Es posible que no haya suficientes cruces en los datos.")
         
         avg_max_gain = np.mean(max_gains) if max_gains else 0
         avg_max_loss = np.mean(max_losses) if max_losses else 0
@@ -397,7 +404,7 @@ with tab1:
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
-# Pestaña 2: Análisis de Trading con MA (modificado)
+# Pestaña 2: Análisis de Trading con MA (modificado con correcciones)
 with tab2:
     st.header("Análisis de Trading con Medias Móviles")
     
@@ -504,64 +511,71 @@ with tab2:
                         ma_lengths = range(min_ma_length, max_ma_length + 1, step_ma_length)
                         trading_df = analyze_ma_trading_potential(data_ma, price_column_ma, ma_lengths, ma_type_ma, look_forward_days)
 
-                        st.write("### Resultados del Análisis de Trading")
-                        st.markdown("""
-                        Aquí tienes una tabla con los resultados:
-                        - **MA_Length**: El número de días de la media móvil.
-                        - **Buy_Signals**: Cuántas veces el precio cruzó hacia abajo de la MA (señal de compra).
-                        - **Avg_Max_Gain (%)**: Ganancia máxima promedio después de una señal de compra (en los próximos N días).
-                        - **Sell_Signals**: Cuántas veces el precio cruzó hacia arriba de la MA (señal de venta).
-                        - **Avg_Max_Loss (%)**: Pérdida máxima promedio después de una señal de venta (en los próximos N días).
-                        """)
-                        st.dataframe(trading_df)
+                        if not trading_df.empty:
+                            st.write("### Resultados del Análisis de Trading")
+                            st.markdown("""
+                            Aquí tienes una tabla con los resultados:
+                            - **MA_Length**: El número de días de la media móvil.
+                            - **Buy_Signals**: Cuántas veces el precio cruzó hacia abajo de la MA (señal de compra).
+                            - **Avg_Max_Gain (%)**: Ganancia máxima promedio después de una señal de compra (en los próximos N días).
+                            - **Sell_Signals**: Cuántas veces el precio cruzó hacia arriba de la MA (señal de venta).
+                            - **Avg_Max_Loss (%)**: Pérdida máxima promedio después de una señal de venta (en los próximos N días).
+                            """)
+                            st.dataframe(trading_df)
 
-                        # Visualización: Ganancia y Pérdida Máxima Promedio por Longitud de MA
-                        fig_trading = go.Figure()
-                        fig_trading.add_trace(go.Scatter(
-                            x=trading_df['MA_Length'],
-                            y=trading_df['Avg_Max_Gain (%)'],
-                            mode='lines+markers',
-                            name='Ganancia Máx. Promedio (%)',
-                            line=dict(color='green')
-                        ))
-                        fig_trading.add_trace(go.Scatter(
-                            x=trading_df['MA_Length'],
-                            y=trading_df['Avg_Max_Loss (%)'],
-                            mode='lines+markers',
-                            name='Pérdida Máx. Promedio (%)',
-                            line=dict(color='red')
-                        ))
-                        fig_trading.add_annotation(
-                            text="MTaurus. X: mtaurus_ok", 
-                            xref="paper", 
-                            yref="paper", 
-                            x=0.95, 
-                            y=0.05, 
-                            showarrow=False, 
-                            font=dict(size=14, color="gray"), 
-                            opacity=0.5
-                        )
-                        fig_trading.update_layout(
-                            title=f"Ganancia y Pérdida Máxima Promedio por Longitud de {ma_type_ma} para {ticker_ma}",
-                            xaxis_title="Longitud de MA (días)",
-                            yaxis_title="Porcentaje (%)",
-                            template="plotly_dark",
-                            hovermode="x unified",
-                            showlegend=True
-                        )
-                        st.plotly_chart(fig_trading, use_container_width=True)
+                            # Visualización: Ganancia y Pérdida Máxima Promedio por Longitud de MA
+                            fig_trading = go.Figure()
+                            fig_trading.add_trace(go.Scatter(
+                                x=trading_df['MA_Length'],
+                                y=trading_df['Avg_Max_Gain (%)'],
+                                mode='lines+markers',
+                                name='Ganancia Máx. Promedio (%)',
+                                line=dict(color='green')
+                            ))
+                            fig_trading.add_trace(go.Scatter(
+                                x=trading_df['MA_Length'],
+                                y=trading_df['Avg_Max_Loss (%)'],
+                                mode='lines+markers',
+                                name='Pérdida Máx. Promedio (%)',
+                                line=dict(color='red')
+                            ))
+                            fig_trading.add_annotation(
+                                text="MTaurus. X: mtaurus_ok", 
+                                xref="paper", 
+                                yref="paper", 
+                                x=0.95, 
+                                y=0.05, 
+                                showarrow=False, 
+                                font=dict(size=14, color="gray"), 
+                                opacity=0.5
+                            )
+                            fig_trading.update_layout(
+                                title=f"Ganancia y Pérdida Máxima Promedio por Longitud de {ma_type_ma} para {ticker_ma}",
+                                xaxis_title="Longitud de MA (días)",
+                                yaxis_title="Porcentaje (%)",
+                                template="plotly_dark",
+                                hovermode="x unified",
+                                showlegend=True
+                            )
+                            st.plotly_chart(fig_trading, use_container_width=True)
 
-                        # Identificar la MA más "viable" para trading
-                        # Podríamos usar un criterio simple: mayor ganancia promedio con menor pérdida promedio
-                        trading_df['Gain_Loss_Ratio'] = trading_df['Avg_Max_Gain (%)'] / abs(trading_df['Avg_Max_Loss (%)']).replace(0, np.nan)
-                        best_ma = trading_df.loc[trading_df['Gain_Loss_Ratio'].idxmax()]
-                        st.markdown(f"""
-                        ### ¿Cuál es la mejor {ma_type_ma} para trading?
-                        Basado en los datos, la {ma_type_ma} de **{int(best_ma['MA_Length'])} días** parece ser la más viable para {ticker_ma}. 
-                        - **Ganancia Máxima Promedio**: {best_ma['Avg_Max_Gain (%)']:.2f}% después de una señal de compra.
-                        - **Pérdida Máxima Promedio**: {best_ma['Avg_Max_Loss (%)']:.2f}% después de una señal de venta.
-                        Esto sugiere que podrías comprar cuando el precio cruza hacia abajo de esta MA y esperar una ganancia promedio de {best_ma['Avg_Max_Gain (%)']:.2f}% en los próximos {look_forward_days} días, mientras que las señales de venta tienen un riesgo promedio de {best_ma['Avg_Max_Loss (%)']:.2f}%.
-                        """)
+                            # Identificar la MA más "viable" para trading
+                            trading_df['Gain_Loss_Ratio'] = np.where(
+                                (trading_df['Avg_Max_Gain (%)'] > 0) & (trading_df['Avg_Max_Loss (%)'] != 0),
+                                trading_df['Avg_Max_Gain (%)'] / abs(trading_df['Avg_Max_Loss (%)']),
+                                np.nan
+                            )
+                            if trading_df['Gain_Loss_Ratio'].notna().any():
+                                best_ma = trading_df.loc[trading_df['Gain_Loss_Ratio'].idxmax()]
+                                st.markdown(f"""
+                                ### ¿Cuál es la mejor {ma_type_ma} para trading?
+                                Basado en los datos, la {ma_type_ma} de **{int(best_ma['MA_Length'])} días** parece ser la más viable para {ticker_ma}. 
+                                - **Ganancia Máxima Promedio**: {best_ma['Avg_Max_Gain (%)']:.2f}% después de una señal de compra.
+                                - **Pérdida Máxima Promedio**: {best_ma['Avg_Max_Loss (%)']:.2f}% después de una señal de venta.
+                                Esto sugiere que podrías comprar cuando el precio cruza hacia abajo de esta MA y esperar una ganancia promedio de {best_ma['Avg_Max_Gain (%)']:.2f}% en los próximos {look_forward_days} días, mientras que las señales de venta tienen un riesgo promedio de {best_ma['Avg_Max_Loss (%)']:.2f}%.
+                                """)
+                            else:
+                                st.warning("No se pudo determinar una MA óptima porque no hay suficientes señales válidas para calcular un ratio de ganancia/pérdida.")
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
