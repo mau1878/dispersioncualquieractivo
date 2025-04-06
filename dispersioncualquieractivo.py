@@ -48,8 +48,8 @@ def calculate_moving_average(data, price_column, ma_type, ma_length):
         )
     return None
 
-# Función para analizar la fiabilidad de diferentes MAs
-def analyze_ma_reliability(data, price_column, ma_lengths, ma_type):
+# Nueva función para analizar la viabilidad de las MAs como estrategia de trading
+def analyze_ma_trading_potential(data, price_column, ma_lengths, ma_type, look_forward_days):
     results = []
     for ma_length in ma_lengths:
         ma_label = f'{ma_type}_{ma_length}'
@@ -58,25 +58,39 @@ def analyze_ma_reliability(data, price_column, ma_lengths, ma_type):
         # Detectar cruces (crossovers y crossunders)
         data['Above_MA'] = data[price_column] > data[ma_label]
         data['Crossover'] = data['Above_MA'].diff().fillna(False)
-        crossovers = data['Crossover'].sum()  # Total de cruces
         
-        # Calcular la frecuencia de reversiones después de un cruce
-        reversals = 0
-        for i in range(1, len(data) - 1):
-            if data['Crossover'].iloc[i]:  # Si hay un cruce
-                if data['Above_MA'].iloc[i]:  # Cruce hacia arriba
-                    if data[price_column].iloc[i + 1] < data[ma_label].iloc[i + 1]:  # Revierte hacia abajo
-                        reversals += 1
-                else:  # Cruce hacia abajo
-                    if data[price_column].iloc[i + 1] > data[ma_label].iloc[i + 1]:  # Revierte hacia arriba
-                        reversals += 1
+        # Identificar señales de compra (cruce hacia abajo) y venta (cruce hacia arriba)
+        buy_signals = 0  # Cruce hacia abajo (precio cae por debajo de la MA)
+        sell_signals = 0  # Cruce hacia arriba (precio sube por encima de la MA)
+        max_gains = []  # Ganancias máximas después de señales de compra
+        max_losses = []  # Pérdidas máximas después de señales de venta
         
-        reversal_rate = reversals / crossovers if crossovers > 0 else 0
+        for i in range(len(data) - look_forward_days):
+            if data['Crossover'].iloc[i]:
+                if data['Above_MA'].iloc[i]:  # Cruce hacia arriba (señal de venta)
+                    sell_signals += 1
+                    # Calcular la pérdida máxima en los próximos look_forward_days
+                    future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
+                    initial_price = data[price_column].iloc[i]
+                    max_loss = ((future_prices.min() - initial_price) / initial_price) * 100  # En porcentaje
+                    max_losses.append(max_loss)
+                else:  # Cruce hacia abajo (señal de compra)
+                    buy_signals += 1
+                    # Calcular la ganancia máxima en los próximos look_forward_days
+                    future_prices = data[price_column].iloc[i:i + look_forward_days + 1]
+                    initial_price = data[price_column].iloc[i]
+                    max_gain = ((future_prices.max() - initial_price) / initial_price) * 100  # En porcentaje
+                    max_gains.append(max_gain)
+        
+        avg_max_gain = np.mean(max_gains) if max_gains else 0
+        avg_max_loss = np.mean(max_losses) if max_losses else 0
+        
         results.append({
             'MA_Length': ma_length,
-            'Crossovers': crossovers,
-            'Reversals': reversals,
-            'Reversal_Rate': reversal_rate
+            'Buy_Signals': buy_signals,
+            'Avg_Max_Gain (%)': avg_max_gain,
+            'Sell_Signals': sell_signals,
+            'Avg_Max_Loss (%)': avg_max_loss
         })
     
     return pd.DataFrame(results)
@@ -86,9 +100,9 @@ st.title("📈 Análisis de Medias Móviles y Dispersión de Precios - MTaurus")
 st.markdown("### 🚀 Sigue nuestro trabajo en [Twitter](https://twitter.com/MTaurus_ok)")
 
 # Crear pestañas
-tab1, tab2 = st.tabs(["Análisis Original", "Análisis de Fiabilidad de MA"])
+tab1, tab2 = st.tabs(["Análisis Original", "Análisis de Trading con MA"])
 
-# Pestaña 1: Análisis Original
+# Pestaña 1: Análisis Original (sin cambios)
 with tab1:
     ticker = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_original").upper()
     
@@ -193,162 +207,160 @@ with tab1:
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # Inside Tab 1, replace the existing "Porcentaje de Dispersión Histórico" section with this:
                     # Visualización 2: Porcentaje de Dispersión Histórico
-                    # Visualización 2: Porcentaje de Dispersión Histórico
-                st.write("### 📉 Porcentaje de Dispersión Histórico")
-                
-                # Verificar datos antes de graficar
-                if data['Porcentaje_Dispersión'].dropna().empty:
-                    st.error("No hay datos válidos de dispersión para graficar.")
-                else:
-                    fig_dispersion = go.Figure()
-                    fig_dispersion.add_trace(go.Scatter(
-                        x=data.index, 
-                        y=data['Porcentaje_Dispersión'], 
-                        mode='lines', 
-                        name='Porcentaje de Dispersión',
-                        line=dict(color='lightgrey')
-                    ))
-                
-                    # Línea de promedio histórico (azul claro)
-                    historical_mean = data['Porcentaje_Dispersión'].mean()
-                    if not pd.isna(historical_mean):
+                    st.write("### 📉 Porcentaje de Dispersión Histórico")
+
+                    # Verificar datos antes de graficar
+                    if data['Porcentaje_Dispersión'].dropna().empty:
+                        st.error("No hay datos válidos de dispersión para graficar.")
+                    else:
+                        fig_dispersion = go.Figure()
+                        fig_dispersion.add_trace(go.Scatter(
+                            x=data.index, 
+                            y=data['Porcentaje_Dispersión'], 
+                            mode='lines', 
+                            name='Porcentaje de Dispersión',
+                            line=dict(color='lightgrey')
+                        ))
+
+                        # Línea de promedio histórico (azul claro)
+                        historical_mean = data['Porcentaje_Dispersión'].mean()
+                        if not pd.isna(historical_mean):
+                            fig_dispersion.add_shape(
+                                type="line", 
+                                x0=data.index.min(), 
+                                x1=data.index.max(), 
+                                y0=historical_mean, 
+                                y1=historical_mean,
+                                line=dict(color="lightblue", width=1, dash="dash"),
+                            )
+                            # Dummy trace para la leyenda
+                            fig_dispersion.add_trace(go.Scatter(
+                                x=[None], y=[None], mode='lines',
+                                line=dict(color="lightblue", width=1, dash="dash"),
+                                name=f"Promedio: {historical_mean:.2f}%",
+                                showlegend=True,
+                                opacity=0
+                            ))
+                            fig_dispersion.add_annotation(
+                                x=data.index.max(), 
+                                y=historical_mean, 
+                                text=f"Promedio: {historical_mean:.2f}%",
+                                showarrow=True, 
+                                arrowhead=1, 
+                                ax=20, 
+                                ay=-20, 
+                                font=dict(color="lightblue")
+                            )
+                        else:
+                            st.warning("No se pudo calcular el promedio histórico debido a datos insuficientes.")
+
+                        # Percentiles dinámicos
+                        lower_percentile = st.slider("Seleccione el percentil inferior", min_value=1, max_value=49, value=5, key="lower_percentile")
+                        upper_percentile = st.slider("Seleccione el percentil superior", min_value=51, max_value=99, value=95, key="upper_percentile")
+
+                        dispersion_data = data['Porcentaje_Dispersión'].dropna()
+                        lower_value = np.percentile(dispersion_data, lower_percentile)
+                        upper_value = np.percentile(dispersion_data, upper_percentile)
+
+                        # Línea de percentil inferior (rojo)
                         fig_dispersion.add_shape(
                             type="line", 
                             x0=data.index.min(), 
                             x1=data.index.max(), 
-                            y0=historical_mean, 
-                            y1=historical_mean,
-                            line=dict(color="lightblue", width=1, dash="dash"),
+                            y0=lower_value, 
+                            y1=lower_value,
+                            line=dict(color="red", width=1, dash="dash"),
                         )
                         # Dummy trace para la leyenda
                         fig_dispersion.add_trace(go.Scatter(
                             x=[None], y=[None], mode='lines',
-                            line=dict(color="lightblue", width=1, dash="dash"),
-                            name=f"Promedio: {historical_mean:.2f}%",
+                            line=dict(color="red", width=1, dash="dash"),
+                            name=f"P{lower_percentile}: {lower_value:.2f}%",
                             showlegend=True,
                             opacity=0
                         ))
                         fig_dispersion.add_annotation(
                             x=data.index.max(), 
-                            y=historical_mean, 
-                            text=f"Promedio: {historical_mean:.2f}%",
+                            y=lower_value, 
+                            text=f"P{lower_percentile}: {lower_value:.2f}%",
+                            showarrow=True, 
+                            arrowhead=1, 
+                            ax=20, 
+                            ay=20, 
+                            font=dict(color="red")
+                        )
+
+                        # Línea de percentil superior (verde)
+                        fig_dispersion.add_shape(
+                            type="line", 
+                            x0=data.index.min(), 
+                            x1=data.index.max(), 
+                            y0=upper_value, 
+                            y1=upper_value,
+                            line=dict(color="green", width=1, dash="dash"),
+                        )
+                        # Dummy trace para la leyenda
+                        fig_dispersion.add_trace(go.Scatter(
+                            x=[None], y=[None], mode='lines',
+                            line=dict(color="green", width=1, dash="dash"),
+                            name=f"P{upper_percentile}: {upper_value:.2f}%",
+                            showlegend=True,
+                            opacity=0
+                        ))
+                        fig_dispersion.add_annotation(
+                            x=data.index.max(), 
+                            y=upper_value, 
+                            text=f"P{upper_percentile}: {upper_value:.2f}%",
                             showarrow=True, 
                             arrowhead=1, 
                             ax=20, 
                             ay=-20, 
-                            font=dict(color="lightblue")
+                            font=dict(color="green")
                         )
-                    else:
-                        st.warning("No se pudo calcular el promedio histórico debido a datos insuficientes.")
-                
-                    # Percentiles dinámicos
-                    lower_percentile = st.slider("Seleccione el percentil inferior", min_value=1, max_value=49, value=5, key="lower_percentile")
-                    upper_percentile = st.slider("Seleccione el percentil superior", min_value=51, max_value=99, value=95, key="upper_percentile")
-                
-                    dispersion_data = data['Porcentaje_Dispersión'].dropna()
-                    lower_value = np.percentile(dispersion_data, lower_percentile)
-                    upper_value = np.percentile(dispersion_data, upper_percentile)
-                
-                    # Línea de percentil inferior (rojo)
-                    fig_dispersion.add_shape(
-                        type="line", 
-                        x0=data.index.min(), 
-                        x1=data.index.max(), 
-                        y0=lower_value, 
-                        y1=lower_value,
-                        line=dict(color="red", width=1, dash="dash"),
-                    )
-                    # Dummy trace para la leyenda
-                    fig_dispersion.add_trace(go.Scatter(
-                        x=[None], y=[None], mode='lines',
-                        line=dict(color="red", width=1, dash="dash"),
-                        name=f"P{lower_percentile}: {lower_value:.2f}%",
-                        showlegend=True,
-                        opacity=0
-                    ))
-                    fig_dispersion.add_annotation(
-                        x=data.index.max(), 
-                        y=lower_value, 
-                        text=f"P{lower_percentile}: {lower_value:.2f}%",
-                        showarrow=True, 
-                        arrowhead=1, 
-                        ax=20, 
-                        ay=20, 
-                        font=dict(color="red")
-                    )
-                
-                    # Línea de percentil superior (verde)
-                    fig_dispersion.add_shape(
-                        type="line", 
-                        x0=data.index.min(), 
-                        x1=data.index.max(), 
-                        y0=upper_value, 
-                        y1=upper_value,
-                        line=dict(color="green", width=1, dash="dash"),
-                    )
-                    # Dummy trace para la leyenda
-                    fig_dispersion.add_trace(go.Scatter(
-                        x=[None], y=[None], mode='lines',
-                        line=dict(color="green", width=1, dash="dash"),
-                        name=f"P{upper_percentile}: {upper_value:.2f}%",
-                        showlegend=True,
-                        opacity=0
-                    ))
-                    fig_dispersion.add_annotation(
-                        x=data.index.max(), 
-                        y=upper_value, 
-                        text=f"P{upper_percentile}: {upper_value:.2f}%",
-                        showarrow=True, 
-                        arrowhead=1, 
-                        ax=20, 
-                        ay=-20, 
-                        font=dict(color="green")
-                    )
-                
-                    # Línea cero (como en el original)
-                    fig_dispersion.add_shape(
-                        type="line", 
-                        x0=data.index.min(), 
-                        x1=data.index.max(), 
-                        y0=0, 
-                        y1=0, 
-                        line=dict(color="red", width=2)
-                    )
-                    # Dummy trace para la leyenda (línea cero)
-                    fig_dispersion.add_trace(go.Scatter(
-                        x=[None], y=[None], mode='lines',
-                        line=dict(color="red", width=2),
-                        name="Línea Cero",
-                        showlegend=True,
-                        opacity=0
-                    ))
-                
-                    # Anotación de MTaurus
-                    fig_dispersion.add_annotation(
-                        text="MTaurus. X: mtaurus_ok", 
-                        xref="paper", 
-                        yref="paper", 
-                        x=0.95, 
-                        y=0.05,
-                        showarrow=False, 
-                        font=dict(size=14, color="gray"), 
-                        opacity=0.5
-                    )
-                
-                    # Configuración del layout
-                    fig_dispersion.update_layout(
-                        title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
-                        xaxis_title="Fecha", 
-                        yaxis_title="Dispersión (%)", 
-                        legend_title="Leyenda",
-                        template="plotly_dark", 
-                        hovermode="x unified",
-                        showlegend=True  # Asegurar que la leyenda sea visible
-                    )
-                
-                    st.plotly_chart(fig_dispersion, use_container_width=True)
+
+                        # Línea cero (como en el original)
+                        fig_dispersion.add_shape(
+                            type="line", 
+                            x0=data.index.min(), 
+                            x1=data.index.max(), 
+                            y0=0, 
+                            y1=0, 
+                            line=dict(color="red", width=2)
+                        )
+                        # Dummy trace para la leyenda (línea cero)
+                        fig_dispersion.add_trace(go.Scatter(
+                            x=[None], y=[None], mode='lines',
+                            line=dict(color="red", width=2),
+                            name="Línea Cero",
+                            showlegend=True,
+                            opacity=0
+                        ))
+
+                        # Anotación de MTaurus
+                        fig_dispersion.add_annotation(
+                            text="MTaurus. X: mtaurus_ok", 
+                            xref="paper", 
+                            yref="paper", 
+                            x=0.95, 
+                            y=0.05,
+                            showarrow=False, 
+                            font=dict(size=14, color="gray"), 
+                            opacity=0.5
+                        )
+
+                        # Configuración del layout
+                        fig_dispersion.update_layout(
+                            title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type})",
+                            xaxis_title="Fecha", 
+                            yaxis_title="Dispersión (%)", 
+                            legend_title="Leyenda",
+                            template="plotly_dark", 
+                            hovermode="x unified",
+                            showlegend=True
+                        )
+
+                        st.plotly_chart(fig_dispersion, use_container_width=True)
 
                     # Visualización 3: Histograma con Seaborn/Matplotlib
                     st.write("### 📊 Histograma de Porcentaje de Dispersión con Percentiles")
@@ -385,25 +397,19 @@ with tab1:
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
-# Pestaña 2: Análisis de Fiabilidad de MA
+# Pestaña 2: Análisis de Trading con MA (modificado)
 with tab2:
-    st.header("Análisis de Fiabilidad de Medias Móviles")
+    st.header("Análisis de Trading con Medias Móviles")
     
     st.markdown("""
     ### ¿Qué hace esta pestaña?
-    Esta herramienta te ayuda a encontrar la mejor **media móvil** (MA) para tomar decisiones sobre una acción (como comprar o vender). Puedes elegir entre:
-    - **SMA** (Simple): Promedio simple de precios.
-    - **EMA** (Exponencial): Da más peso a los precios recientes.
-    - **WMA** (Ponderada): Da más peso a los días más recientes en orden lineal.
-    Probamos diferentes longitudes y vemos cuál es la más "fiable" según los cambios de dirección del precio.
-    """)
-
-    st.markdown("""
-    ### ¿Qué es la "Tasa de Reversión"?
-    La **tasa de reversión** mide qué tan seguido el precio de la acción cambia de dirección justo después de cruzar la media móvil:
-    - Si el precio sube por encima de la MA y luego baja rápidamente, eso es una "reversión".
-    - Si el precio baja por debajo de la MA y luego sube rápidamente, también es una "reversión".
-    Una tasa alta significa que la MA es buena para señalar estos cambios.
+    Esta herramienta evalúa medias móviles (MA) para identificar las más útiles en una estrategia de trading. Analizamos:
+    - **Señales de Compra**: Cuando el precio cruza hacia abajo de la MA (potencial oportunidad de compra).
+    - **Señales de Venta**: Cuando el precio cruza hacia arriba de la MA (potencial oportunidad de venta).
+    Para cada señal, calculamos:
+    - La **ganancia máxima promedio** después de una señal de compra (en los próximos N días).
+    - La **pérdida máxima promedio** después de una señal de venta (en los próximos N días).
+    Esto te ayuda a elegir una MA que ofrezca buenas oportunidades de ganancia con un riesgo controlado.
     """)
 
     ticker_ma = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_ma").upper()
@@ -427,6 +433,7 @@ with tab2:
         min_ma_length = st.number_input("Longitud mínima de MA", min_value=1, value=5, key="min_ma")
         max_ma_length = st.number_input("Longitud máxima de MA", min_value=min_ma_length + 1, value=50, key="max_ma")
         step_ma_length = st.number_input("Paso entre longitudes de MA", min_value=1, value=5, key="step_ma")
+        look_forward_days = st.number_input("Días de proyección (N días después de la señal)", min_value=1, value=5, key="look_forward_days")
         close_price_type_ma = st.selectbox("📈 Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"], key="price_type_ma")
         apply_ratio_ma = st.checkbox("🔄 Ajustar precio por el ratio YPFD.BA/YPF", key="ratio_ma")
 
@@ -495,41 +502,65 @@ with tab2:
                         st.error(f"La columna seleccionada **{price_column_ma}** no existe en los datos.")
                     else:
                         ma_lengths = range(min_ma_length, max_ma_length + 1, step_ma_length)
-                        reliability_df = analyze_ma_reliability(data_ma, price_column_ma, ma_lengths, ma_type_ma)
+                        trading_df = analyze_ma_trading_potential(data_ma, price_column_ma, ma_lengths, ma_type_ma, look_forward_days)
 
-                        st.write("### Resultados del Análisis de Fiabilidad")
+                        st.write("### Resultados del Análisis de Trading")
                         st.markdown("""
                         Aquí tienes una tabla con los resultados:
                         - **MA_Length**: El número de días de la media móvil.
-                        - **Crossovers**: Cuántas veces el precio cruzó la MA (hacia arriba o abajo).
-                        - **Reversals**: Cuántas veces el precio cambió de dirección justo después de cruzar la MA.
-                        - **Reversal_Rate**: El porcentaje de cruces que terminaron en una reversión (más alto es mejor).
+                        - **Buy_Signals**: Cuántas veces el precio cruzó hacia abajo de la MA (señal de compra).
+                        - **Avg_Max_Gain (%)**: Ganancia máxima promedio después de una señal de compra (en los próximos N días).
+                        - **Sell_Signals**: Cuántas veces el precio cruzó hacia arriba de la MA (señal de venta).
+                        - **Avg_Max_Loss (%)**: Pérdida máxima promedio después de una señal de venta (en los próximos N días).
                         """)
-                        st.dataframe(reliability_df)
+                        st.dataframe(trading_df)
 
-                        # Visualización: Tasa de Reversión por Longitud de MA
-                        fig_reliability = go.Figure()
-                        fig_reliability.add_trace(go.Scatter(
-                            x=reliability_df['MA_Length'],
-                            y=reliability_df['Reversal_Rate'],
+                        # Visualización: Ganancia y Pérdida Máxima Promedio por Longitud de MA
+                        fig_trading = go.Figure()
+                        fig_trading.add_trace(go.Scatter(
+                            x=trading_df['MA_Length'],
+                            y=trading_df['Avg_Max_Gain (%)'],
                             mode='lines+markers',
-                            name='Tasa de Reversión'
+                            name='Ganancia Máx. Promedio (%)',
+                            line=dict(color='green')
                         ))
-                        fig_reliability.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
-                        fig_reliability.update_layout(
-                            title=f"Tasa de Reversión por Longitud de {ma_type_ma} para {ticker_ma}",
-                            xaxis_title="Longitud de MA (días)",
-                            yaxis_title="Tasa de Reversión",
-                            template="plotly_dark",
-                            hovermode="x unified"
+                        fig_trading.add_trace(go.Scatter(
+                            x=trading_df['MA_Length'],
+                            y=trading_df['Avg_Max_Loss (%)'],
+                            mode='lines+markers',
+                            name='Pérdida Máx. Promedio (%)',
+                            line=dict(color='red')
+                        ))
+                        fig_trading.add_annotation(
+                            text="MTaurus. X: mtaurus_ok", 
+                            xref="paper", 
+                            yref="paper", 
+                            x=0.95, 
+                            y=0.05, 
+                            showarrow=False, 
+                            font=dict(size=14, color="gray"), 
+                            opacity=0.5
                         )
-                        st.plotly_chart(fig_reliability, use_container_width=True)
+                        fig_trading.update_layout(
+                            title=f"Ganancia y Pérdida Máxima Promedio por Longitud de {ma_type_ma} para {ticker_ma}",
+                            xaxis_title="Longitud de MA (días)",
+                            yaxis_title="Porcentaje (%)",
+                            template="plotly_dark",
+                            hovermode="x unified",
+                            showlegend=True
+                        )
+                        st.plotly_chart(fig_trading, use_container_width=True)
 
-                        # Identificar la MA más "fiable"
-                        best_ma = reliability_df.loc[reliability_df['Reversal_Rate'].idxmax()]
+                        # Identificar la MA más "viable" para trading
+                        # Podríamos usar un criterio simple: mayor ganancia promedio con menor pérdida promedio
+                        trading_df['Gain_Loss_Ratio'] = trading_df['Avg_Max_Gain (%)'] / abs(trading_df['Avg_Max_Loss (%)']).replace(0, np.nan)
+                        best_ma = trading_df.loc[trading_df['Gain_Loss_Ratio'].idxmax()]
                         st.markdown(f"""
-                        ### ¿Cuál es la mejor {ma_type_ma}?
-                        Basado en los datos, la {ma_type_ma} de **{int(best_ma['MA_Length'])} días** es la más fiable para {ticker_ma}. Tiene una tasa de reversión de **{best_ma['Reversal_Rate']:.2%}**, lo que significa que el {best_ma['Reversal_Rate']:.0%} de las veces que el precio cruza esta {ma_type_ma}, cambia de dirección al día siguiente.
+                        ### ¿Cuál es la mejor {ma_type_ma} para trading?
+                        Basado en los datos, la {ma_type_ma} de **{int(best_ma['MA_Length'])} días** parece ser la más viable para {ticker_ma}. 
+                        - **Ganancia Máxima Promedio**: {best_ma['Avg_Max_Gain (%)']:.2f}% después de una señal de compra.
+                        - **Pérdida Máxima Promedio**: {best_ma['Avg_Max_Loss (%)']:.2f}% después de una señal de venta.
+                        Esto sugiere que podrías comprar cuando el precio cruza hacia abajo de esta MA y esperar una ganancia promedio de {best_ma['Avg_Max_Gain (%)']:.2f}% en los próximos {look_forward_days} días, mientras que las señales de venta tienen un riesgo promedio de {best_ma['Avg_Max_Loss (%)']:.2f}%.
                         """)
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
