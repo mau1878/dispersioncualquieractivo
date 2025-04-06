@@ -20,8 +20,6 @@ st.set_page_config(
 def flatten_columns(df, ticker):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = [f"{col[0]} {col[1]}" for col in df.columns]
-    else:
-        df.columns = [f"{col} {ticker}" for col in df.columns]
     return df
 
 # Función para descargar y comprimir datos
@@ -44,7 +42,6 @@ def download_data(ticker, start, end, compression='Daily'):
                 f'High {ticker}': 'max',
                 f'Low {ticker}': 'min',
                 f'Close {ticker}': 'last',
-                f'Adj Close {ticker}': 'last',
                 f'Volume {ticker}': 'sum'
             })
         elif compression == 'Monthly':
@@ -54,7 +51,6 @@ def download_data(ticker, start, end, compression='Daily'):
                 f'High {ticker}': 'max',
                 f'Low {ticker}': 'min',
                 f'Close {ticker}': 'last',
-                f'Adj Close {ticker}': 'last',
                 f'Volume {ticker}': 'sum'
             })
         else:
@@ -164,9 +160,9 @@ st.markdown("### 🚀 Sigue nuestro trabajo en [Twitter](https://twitter.com/MTa
 # Crear pestañas
 tab1, tab2 = st.tabs(["Análisis Original", "Análisis de Trading con Percentiles de Dispersión"])
 
-# Pestaña 1: Análisis Original (con opción de compresión)
+# Pestaña 1: Análisis Original (con opción de compresión y sin Adj Close)
 with tab1:
-    ticker = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_original").upper()
+    ticker = st.text_input("🖊️ Ingrese el símbolo del ticker", value="AAPL", key="ticker_original").upper()
     
     if ticker:
         ma_type = st.selectbox("📊 Seleccione el tipo de media móvil", ["SMA", "EMA", "WMA"], key="ma_type_original")
@@ -193,13 +189,11 @@ with tab1:
         if start_date > end_date:
             st.error("La fecha de inicio no puede ser posterior a la fecha de fin.")
         else:
-            close_price_type = st.selectbox("📈 Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"], key="price_type_original")
             apply_ratio = st.checkbox("🔄 Ajustar precio por el ratio YPFD.BA/YPF", key="ratio_original")
 
             data = download_data(ticker, start_date, end_date, compression=compression)
 
             if data is not None:
-                adj_close_col_main = f"Adj Close {ticker}"
                 close_col_main = f"Close {ticker}"
 
                 if apply_ratio:
@@ -210,42 +204,25 @@ with tab1:
                     ypf_data = download_data(ypf_ticker, start_date, end_date, compression=compression)
 
                     if ypfd_ba_data is not None and ypf_data is not None:
-                        adj_close_col_ypfd = f"Adj Close {ypfd_ba_ticker}"
-                        adj_close_col_ypf = f"Adj Close {ypf_ticker}"
                         close_col_ypfd = f"Close {ypfd_ba_ticker}"
                         close_col_ypf = f"Close {ypf_ticker}"
 
-                        ypfd_price_col = adj_close_col_ypfd if adj_close_col_ypfd in ypfd_ba_data.columns else close_col_ypfd
-                        ypf_price_col = adj_close_col_ypf if adj_close_col_ypf in ypf_data.columns else close_col_ypf
-
-                        if ypfd_price_col in ypfd_ba_data.columns and ypf_price_col in ypf_data.columns:
+                        if close_col_ypfd in ypfd_ba_data.columns and close_col_ypf in ypf_data.columns:
                             ypfd_ba_data = ypfd_ba_data.fillna(method='ffill').fillna(method='bfill')
                             ypf_data = ypf_data.fillna(method='ffill').fillna(method='bfill')
-                            ratio = ypfd_ba_data[ypfd_price_col] / ypf_data[ypf_price_col]
+                            ratio = ypfd_ba_data[close_col_ypfd] / ypf_data[close_col_ypf]
                             ratio = ratio.reindex(data.index).fillna(method='ffill').fillna(method='bfill')
 
-                            if adj_close_col_main in data.columns:
-                                data['Adj Close Ajustado'] = data[adj_close_col_main] / ratio
-                            else:
-                                st.warning(f"No se encontró 'Adj Close' para {ticker}. Usando 'Close'.")
-                                data['Adj Close Ajustado'] = data[close_col_main] / ratio
                             data['Close Ajustado'] = data[close_col_main] / ratio
                         else:
                             st.error(f"No se encontraron columnas de precio válidas para {ypfd_ba_ticker} o {ypf_ticker}.")
                     else:
                         st.error("No se pudieron descargar los datos necesarios para aplicar el ratio.")
                 else:
-                    if adj_close_col_main in data.columns:
-                        data['Adj Close Original'] = data[adj_close_col_main]
-                    else:
-                        st.warning(f"No se encontró 'Adj Close' para {ticker}. Usando 'Close'.")
-                        data['Adj Close Original'] = data[close_col_main]
                     data['Close Original'] = data[close_col_main]
 
                 price_column = (
-                    'Adj Close Ajustado' if (apply_ratio and close_price_type == "Ajustado" and 'Adj Close Ajustado' in data.columns)
-                    else 'Close Ajustado' if (apply_ratio and 'Close Ajustado' in data.columns)
-                    else 'Adj Close Original' if (not apply_ratio and close_price_type == "Ajustado" and 'Adj Close Original' in data.columns)
+                    'Close Ajustado' if (apply_ratio and 'Close Ajustado' in data.columns)
                     else 'Close Original' if 'Close Original' in data.columns
                     else close_col_main
                 )
@@ -265,7 +242,7 @@ with tab1:
                     fig.add_trace(go.Scatter(x=data.index, y=data[ma_label], mode='lines', name=f'{ma_type} de {ma_window} períodos'))
                     fig.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
                     fig.update_layout(
-                        title=f"Precio Histórico {'Ajustado' if close_price_type == 'Ajustado' else 'No Ajustado'} de {ticker} con {ma_type} de {ma_window} períodos ({compression})",
+                        title=f"Precio Histórico de {ticker} con {ma_type} de {ma_window} períodos ({compression})",
                         xaxis_title="Fecha", yaxis_title="Precio (USD)", legend_title="Leyenda", template="plotly_dark", hovermode="x unified"
                     )
                     st.plotly_chart(fig, use_container_width=True)
@@ -414,7 +391,7 @@ with tab1:
 
                         # Configuración del layout
                         fig_dispersion.update_layout(
-                            title=f"Porcentaje de Dispersión Histórico de {ticker} ({close_price_type}, {compression})",
+                            title=f"Porcentaje de Dispersión Histórico de {ticker} ({compression})",
                             xaxis_title="Fecha", 
                             yaxis_title="Dispersión (%)", 
                             legend_title="Leyenda",
@@ -435,7 +412,7 @@ with tab1:
                         ax.axvline(value, color='red', linestyle='--')
                         ax.text(value, ax.get_ylim()[1] * 0.9, f'{percentile}º Percentil', color='red', rotation='vertical', verticalalignment='center', horizontalalignment='right')
                     ax.text(0.95, 0.05, "MTaurus. X: mtaurus_ok", fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=fig.transFigure)
-                    ax.set_title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}, {compression}) desde {ma_type} de {ma_window} períodos')
+                    ax.set_title(f'Porcentaje de Dispersión de {ticker} ({compression}) desde {ma_type} de {ma_window} períodos')
                     ax.set_xlabel('Dispersión (%)')
                     ax.set_ylabel('Frecuencia')
                     plt.tight_layout()
@@ -453,14 +430,14 @@ with tab1:
                         fig_hist.add_vline(x=value, line=dict(color="red", width=2, dash="dash"), annotation_text=f'{percentile}º Percentil', annotation_position="top", annotation=dict(textangle=-90, font=dict(color="red")))
                     fig_hist.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
                     fig_hist.update_layout(
-                        title=f'Histograma del Porcentaje de Dispersión de {ticker} ({close_price_type}, {compression})',
+                        title=f'Histograma del Porcentaje de Dispersión de {ticker} ({compression})',
                         xaxis_title='Dispersión (%)', yaxis_title='Frecuencia', bargap=0.1, template="plotly_dark", hovermode="x unified"
                     )
                     st.plotly_chart(fig_hist, use_container_width=True)
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
 
-# Pestaña 2: Análisis de Trading con Percentiles de Dispersión (con opción de compresión)
+# Pestaña 2: Análisis de Trading con Percentiles de Dispersión (con opción de compresión y sin Adj Close)
 with tab2:
     st.header("Análisis de Trading con Percentiles de Dispersión")
     
@@ -475,7 +452,7 @@ with tab2:
     Esto te ayuda a elegir una MA que ofrezca señales confiables para comprar y vender basadas en extremos de dispersión.
     """)
 
-    ticker_ma = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_ma").upper()
+    ticker_ma = st.text_input("🖊️ Ingrese el símbolo del ticker", value="AAPL", key="ticker_ma").upper()
     
     if ticker_ma:
         ma_type_ma = st.selectbox("📊 Seleccione el tipo de media móvil", ["SMA", "EMA", "WMA"], key="ma_type_ma")
@@ -500,7 +477,6 @@ with tab2:
         low_percentile = st.slider("Percentil bajo para señales de compra", min_value=1, max_value=49, value=5, key="low_percentile_ma")
         high_percentile = st.slider("Percentil alto para señales de venta", min_value=51, max_value=99, value=95, key="high_percentile_ma")
         compression_ma = st.selectbox("📅 Seleccione la compresión de datos", ["Daily", "Weekly", "Monthly"], key="compression_ma")
-        close_price_type_ma = st.selectbox("📈 Seleccione el tipo de precio de cierre", ["No ajustado", "Ajustado"], key="price_type_ma")
         apply_ratio_ma = st.checkbox("🔄 Ajustar precio por el ratio YPFD.BA/YPF", key="ratio_ma")
 
         start_date_ma = pd.to_datetime(start_date_ma)
@@ -513,7 +489,6 @@ with tab2:
                 data_ma = download_data(ticker_ma, start_date_ma, end_date_ma, compression=compression_ma)
 
                 if data_ma is not None:
-                    adj_close_col_main = f"Adj Close {ticker_ma}"
                     close_col_main = f"Close {ticker_ma}"
 
                     if apply_ratio_ma:
@@ -524,42 +499,25 @@ with tab2:
                         ypf_data = download_data(ypf_ticker, start_date_ma, end_date_ma, compression=compression_ma)
 
                         if ypfd_ba_data is not None and ypf_data is not None:
-                            adj_close_col_ypfd = f"Adj Close {ypfd_ba_ticker}"
-                            adj_close_col_ypf = f"Adj Close {ypf_ticker}"
                             close_col_ypfd = f"Close {ypfd_ba_ticker}"
                             close_col_ypf = f"Close {ypf_ticker}"
 
-                            ypfd_price_col = adj_close_col_ypfd if adj_close_col_ypfd in ypfd_ba_data.columns else close_col_ypfd
-                            ypf_price_col = adj_close_col_ypf if adj_close_col_ypf in ypf_data.columns else close_col_ypf
-
-                            if ypfd_price_col in ypfd_ba_data.columns and ypf_price_col in ypf_data.columns:
+                            if close_col_ypfd in ypfd_ba_data.columns and close_col_ypf in ypf_data.columns:
                                 ypfd_ba_data = ypfd_ba_data.fillna(method='ffill').fillna(method='bfill')
                                 ypf_data = ypf_data.fillna(method='ffill').fillna(method='bfill')
-                                ratio = ypfd_ba_data[ypfd_price_col] / ypf_data[ypf_price_col]
+                                ratio = ypfd_ba_data[close_col_ypfd] / ypf_data[close_col_ypf]
                                 ratio = ratio.reindex(data_ma.index).fillna(method='ffill').fillna(method='bfill')
 
-                                if adj_close_col_main in data_ma.columns:
-                                    data_ma['Adj Close Ajustado'] = data_ma[adj_close_col_main] / ratio
-                                else:
-                                    st.warning(f"No se encontró 'Adj Close' para {ticker_ma}. Usando 'Close'.")
-                                    data_ma['Adj Close Ajustado'] = data_ma[close_col_main] / ratio
                                 data_ma['Close Ajustado'] = data_ma[close_col_main] / ratio
                             else:
                                 st.error(f"No se encontraron columnas de precio válidas para {ypfd_ba_ticker} o {ypf_ticker}.")
                         else:
                             st.error("No se pudieron descargar los datos necesarios para aplicar el ratio.")
                     else:
-                        if adj_close_col_main in data_ma.columns:
-                            data_ma['Adj Close Original'] = data_ma[adj_close_col_main]
-                        else:
-                            st.warning(f"No se encontró 'Adj Close' para {ticker_ma}. Usando 'Close'.")
-                            data_ma['Adj Close Original'] = data_ma[close_col_main]
                         data_ma['Close Original'] = data_ma[close_col_main]
 
                     price_column_ma = (
-                        'Adj Close Ajustado' if (apply_ratio_ma and close_price_type_ma == "Ajustado" and 'Adj Close Ajustado' in data_ma.columns)
-                        else 'Close Ajustado' if (apply_ratio_ma and 'Close Ajustado' in data_ma.columns)
-                        else 'Adj Close Original' if (not apply_ratio_ma and close_price_type_ma == "Ajustado" and 'Adj Close Original' in data_ma.columns)
+                        'Close Ajustado' if (apply_ratio_ma and 'Close Ajustado' in data_ma.columns)
                         else 'Close Original' if 'Close Original' in data_ma.columns
                         else close_col_main
                     )
