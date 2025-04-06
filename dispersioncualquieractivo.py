@@ -229,7 +229,7 @@ with tab1:
                                 arrowhead=1, 
                                 ax=20, 
                                 ay=-20, 
-                                font=dict(color="blue")
+                                font=dict(color="lightblue")
                             )
                         else:
                             st.warning("No se pudo calcular el promedio histórico debido a datos insuficientes.")
