@@ -207,7 +207,7 @@ with tab1:
                             y=data['Porcentaje_Dispersión'], 
                             mode='lines', 
                             name='Porcentaje de Dispersión',
-                            line=dict(color='white')  # Asegurar visibilidad en tema oscuro
+                            line=dict(color='lightgrey')  # Asegurar visibilidad en tema oscuro
                         ))
                     
                         # Línea de promedio histórico (azul)
@@ -219,7 +219,7 @@ with tab1:
                                 x1=data.index.max(), 
                                 y0=historical_mean, 
                                 y1=historical_mean,
-                                line=dict(color="blue", width=1, dash="dash"),
+                                line=dict(color="lightblue", width=1, dash="dash"),
                             )
                             fig_dispersion.add_annotation(
                                 x=data.index.max(), 
