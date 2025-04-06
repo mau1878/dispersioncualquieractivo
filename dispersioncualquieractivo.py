@@ -6,6 +6,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Set Matplotlib backend to 'agg' to avoid rendering issues in Streamlit
+plt.switch_backend('agg')
+
 # Configuración de la página de Streamlit
 st.set_page_config(
     page_title="Análisis de Medias Móviles y Dispersión de Precios",
@@ -133,7 +136,7 @@ st.markdown("### 🚀 Sigue nuestro trabajo en [Twitter](https://twitter.com/MTa
 # Crear pestañas
 tab1, tab2 = st.tabs(["Análisis Original", "Análisis de Trading con Percentiles de Dispersión"])
 
-# Pestaña 1: Análisis Original (sin cambios)
+# Pestaña 1: Análisis Original (con corrección para el error de st.pyplot)
 with tab1:
     ticker = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_original").upper()
     
@@ -393,22 +396,23 @@ with tab1:
 
                         st.plotly_chart(fig_dispersion, use_container_width=True)
 
-                    # Visualización 3: Histograma con Seaborn/Matplotlib
+                    # Visualización 3: Histograma con Seaborn/Matplotlib (corregido)
                     st.write("### 📊 Histograma de Porcentaje de Dispersión con Percentiles")
                     percentiles = [95, 85, 75, 50, 25, 15, 5]
                     percentile_values = np.percentile(data['Porcentaje_Dispersión'].dropna(), percentiles)
-                    plt.figure(figsize=(10, 6))
-                    sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100)
+                    # Crear una figura explícitamente
+                    fig, ax = plt.subplots(figsize=(10, 6))
+                    sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100, ax=ax)
                     for percentile, value in zip(percentiles, percentile_values):
-                        plt.axvline(value, color='red', linestyle='--')
-                        plt.text(value, plt.ylim()[1] * 0.9, f'{percentile}º Percentil', color='red', rotation='vertical', verticalalignment='center', horizontalalignment='right')
-                    plt.text(0.95, 0.05, "MTaurus. X: mtaurus_ok", fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure)
-                    plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde {ma_type} de {ma_window} días')
-                    plt.xlabel('Dispersión (%)')
-                    plt.ylabel('Frecuencia')
+                        ax.axvline(value, color='red', linestyle='--')
+                        ax.text(value, ax.get_ylim()[1] * 0.9, f'{percentile}º Percentil', color='red', rotation='vertical', verticalalignment='center', horizontalalignment='right')
+                    ax.text(0.95, 0.05, "MTaurus. X: mtaurus_ok", fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=fig.transFigure)
+                    ax.set_title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde {ma_type} de {ma_window} días')
+                    ax.set_xlabel('Dispersión (%)')
+                    ax.set_ylabel('Frecuencia')
                     plt.tight_layout()
-                    st.pyplot(plt)
-                    plt.clf()
+                    st.pyplot(fig)
+                    plt.close(fig)  # Cerrar la figura después de renderizar para liberar memoria
 
                     # Visualización 4: Histograma Personalizable con Plotly
                     st.write("### 🎨 Personalización del Histograma")
