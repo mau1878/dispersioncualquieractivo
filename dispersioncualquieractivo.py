@@ -8,7 +8,7 @@ import numpy as np
 
 # Configuración de la página de Streamlit
 st.set_page_config(
-    page_title="Análisis de SMA y Dispersión de Precios",
+    page_title="Análisis de Medias Móviles y Dispersión de Precios",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -35,12 +35,25 @@ def download_data(ticker, start, end):
         st.error(f"Error al descargar datos para el ticker **{ticker}**: {e}")
         return None
 
+# Función para calcular diferentes tipos de medias móviles
+def calculate_moving_average(data, price_column, ma_type, ma_length):
+    if ma_type == "SMA":
+        return data[price_column].rolling(window=ma_length).mean()
+    elif ma_type == "EMA":
+        return data[price_column].ewm(span=ma_length, adjust=False).mean()
+    elif ma_type == "WMA":
+        weights = np.arange(1, ma_length + 1)
+        return data[price_column].rolling(window=ma_length).apply(
+            lambda x: np.dot(x, weights) / weights.sum(), raw=True
+        )
+    return None
+
 # Función para analizar la fiabilidad de diferentes MAs
-def analyze_ma_reliability(data, price_column, ma_lengths):
+def analyze_ma_reliability(data, price_column, ma_lengths, ma_type):
     results = []
     for ma_length in ma_lengths:
-        ma_label = f'SMA_{ma_length}'
-        data[ma_label] = data[price_column].rolling(window=ma_length).mean()
+        ma_label = f'{ma_type}_{ma_length}'
+        data[ma_label] = calculate_moving_average(data, price_column, ma_type, ma_length)
         
         # Detectar cruces (crossovers y crossunders)
         data['Above_MA'] = data[price_column] > data[ma_label]
@@ -69,7 +82,7 @@ def analyze_ma_reliability(data, price_column, ma_lengths):
     return pd.DataFrame(results)
 
 # Título de la aplicación
-st.title("📈 Análisis de SMA y Dispersión de Precios - MTaurus")
+st.title("📈 Análisis de Medias Móviles y Dispersión de Precios - MTaurus")
 st.markdown("### 🚀 Sigue nuestro trabajo en [Twitter](https://twitter.com/MTaurus_ok)")
 
 # Crear pestañas
@@ -80,7 +93,8 @@ with tab1:
     ticker = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_original").upper()
     
     if ticker:
-        sma_window = st.number_input("📊 Ingrese la ventana de SMA (número de días)", min_value=1, value=21, key="sma_original")
+        ma_type = st.selectbox("📊 Seleccione el tipo de media móvil", ["SMA", "EMA", "WMA"], key="ma_type_original")
+        ma_window = st.number_input("📊 Ingrese la ventana de la media móvil (número de días)", min_value=1, value=21, key="ma_window_original")
         start_date = st.date_input(
             "📅 Seleccione la fecha de inicio",
             value=pd.to_datetime('2000-01-01'),
@@ -162,19 +176,19 @@ with tab1:
                 if price_column not in data.columns:
                     st.error(f"La columna seleccionada **{price_column}** no existe en los datos.")
                 else:
-                    sma_label = f'SMA_{sma_window}'
-                    data[sma_label] = data[price_column].rolling(window=sma_window).mean()
-                    data['Dispersión'] = data[price_column] - data[sma_label]
-                    data['Porcentaje_Dispersión'] = (data['Dispersión'] / data[sma_label]) * 100
+                    ma_label = f'{ma_type}_{ma_window}'
+                    data[ma_label] = calculate_moving_average(data, price_column, ma_type, ma_window)
+                    data['Dispersión'] = data[price_column] - data[ma_label]
+                    data['Porcentaje_Dispersión'] = (data['Dispersión'] / data[ma_label]) * 100
 
-                    # Visualización 1: Precio Histórico con SMA
-                    st.write("### 📈 Precio Histórico con SMA")
+                    # Visualización 1: Precio Histórico con MA
+                    st.write(f"### 📈 Precio Histórico con {ma_type}")
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=data.index, y=data[price_column], mode='lines', name='Precio de Cierre'))
-                    fig.add_trace(go.Scatter(x=data.index, y=data[sma_label], mode='lines', name=f'SMA de {sma_window} días'))
+                    fig.add_trace(go.Scatter(x=data.index, y=data[ma_label], mode='lines', name=f'{ma_type} de {ma_window} días'))
                     fig.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
                     fig.update_layout(
-                        title=f"Precio Histórico {'Ajustado' if close_price_type == 'Ajustado' else 'No Ajustado'} de {ticker} con SMA de {sma_window} días",
+                        title=f"Precio Histórico {'Ajustado' if close_price_type == 'Ajustado' else 'No Ajustado'} de {ticker} con {ma_type} de {ma_window} días",
                         xaxis_title="Fecha", yaxis_title="Precio (USD)", legend_title="Leyenda", template="plotly_dark", hovermode="x unified"
                     )
                     st.plotly_chart(fig, use_container_width=True)
@@ -201,7 +215,7 @@ with tab1:
                         plt.axvline(value, color='red', linestyle='--')
                         plt.text(value, plt.ylim()[1] * 0.9, f'{percentile}º Percentil', color='red', rotation='vertical', verticalalignment='center', horizontalalignment='right')
                     plt.text(0.95, 0.05, "MTaurus. X: mtaurus_ok", fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=plt.gcf().transFigure)
-                    plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde SMA de {sma_window} días')
+                    plt.title(f'Porcentaje de Dispersión de {ticker} ({close_price_type}) desde {ma_type} de {ma_window} días')
                     plt.xlabel('Dispersión (%)')
                     plt.ylabel('Frecuencia')
                     plt.tight_layout()
@@ -230,12 +244,13 @@ with tab1:
 with tab2:
     st.header("Análisis de Fiabilidad de Medias Móviles")
     
-    # Explicación para usuarios no técnicos
     st.markdown("""
     ### ¿Qué hace esta pestaña?
-    Esta herramienta te ayuda a encontrar la mejor **media móvil** (MA) para tomar decisiones sobre una acción (como comprar o vender). Una media móvil es simplemente un promedio del precio de la acción durante un número determinado de días, y puede actuar como una señal para adivinar cuándo el precio podría cambiar de dirección.
-
-    Aquí probamos diferentes longitudes de MA (por ejemplo, 5 días, 10 días, 20 días, etc.) y vemos cuál es la más "fiable". Una MA fiable es aquella que, históricamente, ha dado señales claras de cuándo el precio sube o baja, y luego cambia de dirección con frecuencia. Esto puede ayudarte a decidir cuándo entrar (comprar) o salir (vender) de una acción.
+    Esta herramienta te ayuda a encontrar la mejor **media móvil** (MA) para tomar decisiones sobre una acción (como comprar o vender). Puedes elegir entre:
+    - **SMA** (Simple): Promedio simple de precios.
+    - **EMA** (Exponencial): Da más peso a los precios recientes.
+    - **WMA** (Ponderada): Da más peso a los días más recientes en orden lineal.
+    Probamos diferentes longitudes y vemos cuál es la más "fiable" según los cambios de dirección del precio.
     """)
 
     st.markdown("""
@@ -243,12 +258,13 @@ with tab2:
     La **tasa de reversión** mide qué tan seguido el precio de la acción cambia de dirección justo después de cruzar la media móvil:
     - Si el precio sube por encima de la MA y luego baja rápidamente, eso es una "reversión".
     - Si el precio baja por debajo de la MA y luego sube rápidamente, también es una "reversión".
-    Una tasa alta significa que la MA es buena para señalar estos cambios, lo que la hace útil para decidir cuándo actuar. Elegimos la MA con la tasa de reversión más alta como la más "fiable".
+    Una tasa alta significa que la MA es buena para señalar estos cambios.
     """)
 
     ticker_ma = st.text_input("🖊️ Ingrese el símbolo del ticker", value="GGAL", key="ticker_ma").upper()
     
     if ticker_ma:
+        ma_type_ma = st.selectbox("📊 Seleccione el tipo de media móvil", ["SMA", "EMA", "WMA"], key="ma_type_ma")
         start_date_ma = st.date_input(
             "📅 Seleccione la fecha de inicio",
             value=pd.to_datetime('2000-01-01'),
@@ -275,7 +291,6 @@ with tab2:
         if start_date_ma > end_date_ma:
             st.error("La fecha de inicio no puede ser posterior a la fecha de fin.")
         else:
-            # Botón de confirmación
             if st.button("Confirmar Análisis", key="confirm_ma"):
                 data_ma = download_data(ticker_ma, start_date_ma, end_date_ma)
 
@@ -335,7 +350,7 @@ with tab2:
                         st.error(f"La columna seleccionada **{price_column_ma}** no existe en los datos.")
                     else:
                         ma_lengths = range(min_ma_length, max_ma_length + 1, step_ma_length)
-                        reliability_df = analyze_ma_reliability(data_ma, price_column_ma, ma_lengths)
+                        reliability_df = analyze_ma_reliability(data_ma, price_column_ma, ma_lengths, ma_type_ma)
 
                         st.write("### Resultados del Análisis de Fiabilidad")
                         st.markdown("""
@@ -357,7 +372,7 @@ with tab2:
                         ))
                         fig_reliability.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
                         fig_reliability.update_layout(
-                            title=f"Tasa de Reversión por Longitud de MA para {ticker_ma}",
+                            title=f"Tasa de Reversión por Longitud de {ma_type_ma} para {ticker_ma}",
                             xaxis_title="Longitud de MA (días)",
                             yaxis_title="Tasa de Reversión",
                             template="plotly_dark",
@@ -368,8 +383,8 @@ with tab2:
                         # Identificar la MA más "fiable"
                         best_ma = reliability_df.loc[reliability_df['Reversal_Rate'].idxmax()]
                         st.markdown(f"""
-                        ### ¿Cuál es la mejor MA?
-                        Basado en los datos, la media móvil de **{int(best_ma['MA_Length'])} días** es la más fiable para {ticker_ma}. Tiene una tasa de reversión de **{best_ma['Reversal_Rate']:.2%}**, lo que significa que el {best_ma['Reversal_Rate']:.0%} de las veces que el precio cruza esta MA, cambia de dirección al día siguiente. Esto podría ser una buena señal para decidir cuándo comprar (si cruza hacia arriba) o vender (si cruza hacia abajo).
+                        ### ¿Cuál es la mejor {ma_type_ma}?
+                        Basado en los datos, la {ma_type_ma} de **{int(best_ma['MA_Length'])} días** es la más fiable para {ticker_ma}. Tiene una tasa de reversión de **{best_ma['Reversal_Rate']:.2%}**, lo que significa que el {best_ma['Reversal_Rate']:.0%} de las veces que el precio cruza esta {ma_type_ma}, cambia de dirección al día siguiente.
                         """)
     else:
         st.warning("⚠️ Por favor, ingrese un símbolo de ticker válido para comenzar el análisis.")
