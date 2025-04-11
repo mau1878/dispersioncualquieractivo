@@ -402,15 +402,48 @@ with tab1:
 
                         st.plotly_chart(fig_dispersion, use_container_width=True)
 
+                    # Dentro de Tab 1, reemplazar Visualización 3 y Visualización 4 con lo siguiente:
+                    
                     # Visualización 3: Histograma con Seaborn/Matplotlib
                     st.write(f"### 📊 Histograma de Porcentaje de Dispersión con Percentiles ({compression})")
                     percentiles = [95, 85, 75, 50, 25, 15, 5]
                     percentile_values = np.percentile(data['Porcentaje_Dispersión'].dropna(), percentiles)
+                    
+                    # Input para fechas específicas
+                    st.write("#### Seleccionar fechas específicas para destacar en el histograma")
+                    num_dates = st.number_input("Número de fechas a destacar", min_value=0, max_value=10, value=0, key="num_dates_hist")
+                    selected_dates = []
+                    dispersion_values = []
+                    if num_dates > 0:
+                        for i in range(num_dates):
+                            date = st.date_input(
+                                f"Seleccione la fecha {i+1}",
+                                value=data.index[-1],
+                                min_value=data.index[0],
+                                max_value=data.index[-1],
+                                key=f"hist_date_{i}"
+                            )
+                            date = pd.to_datetime(date)
+                            if date in data.index:
+                                selected_dates.append(date)
+                                disp_value = data.loc[date, 'Porcentaje_Dispersión']
+                                if not pd.isna(disp_value):
+                                    dispersion_values.append(disp_value)
+                                else:
+                                    st.warning(f"No hay datos de dispersión para la fecha {date.strftime('%Y-%m-%d')}.")
+                            else:
+                                st.warning(f"La fecha {date.strftime('%Y-%m-%d')} no está en el rango de datos.")
+                    
                     fig, ax = plt.subplots(figsize=(10, 6))
                     sns.histplot(data['Porcentaje_Dispersión'].dropna(), kde=True, color='blue', bins=100, ax=ax)
                     for percentile, value in zip(percentiles, percentile_values):
                         ax.axvline(value, color='red', linestyle='--')
                         ax.text(value, ax.get_ylim()[1] * 0.9, f'{percentile}º Percentil', color='red', rotation='vertical', verticalalignment='center', horizontalalignment='right')
+                    # Destacar fechas seleccionadas
+                    for date, disp_value in zip(selected_dates, dispersion_values):
+                        ax.axvline(disp_value, color='green', linestyle='-', alpha=0.5)
+                        ax.text(disp_value, ax.get_ylim()[1] * 0.95, f"{date.strftime('%Y-%m-%d')}\n{disp_value:.2f}%", 
+                                color='green', rotation='vertical', verticalalignment='center', horizontalalignment='left')
                     ax.text(0.95, 0.05, "MTaurus. X: mtaurus_ok", fontsize=14, color='gray', ha='right', va='center', alpha=0.5, transform=fig.transFigure)
                     ax.set_title(f'Porcentaje de Dispersión de {ticker} ({compression}) desde {ma_type} de {ma_window} períodos')
                     ax.set_xlabel('Dispersión (%)')
@@ -418,7 +451,7 @@ with tab1:
                     plt.tight_layout()
                     st.pyplot(fig)
                     plt.close(fig)
-
+                    
                     # Visualización 4: Histograma Personalizable con Plotly
                     st.write(f"### 🎨 Personalización del Histograma ({compression})")
                     num_bins = st.slider("Seleccione el número de bins para el histograma", min_value=10, max_value=100, value=50, key="bins_original")
@@ -427,11 +460,20 @@ with tab1:
                     fig_hist = go.Figure()
                     fig_hist.add_trace(go.Histogram(x=data['Porcentaje_Dispersión'].dropna(), nbinsx=num_bins, marker_color=hist_color, opacity=0.75, name="Histograma"))
                     for percentile, value in zip(percentiles, percentile_values):
-                        fig_hist.add_vline(x=value, line=dict(color="red", width=2, dash="dash"), annotation_text=f'{percentile}º Percentil', annotation_position="top", annotation=dict(textangle=-90, font=dict(color="red")))
-                    fig_hist.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
+                        fig_hist.add_vline(x=value, line=dict(color="red", width=2, dash="dash"), 
+                                           annotation_text=f'{percentile}º Percentil', annotation_position="top", 
+                                           annotation=dict(textangle=-90, font=dict(color="red")))
+                    # Destacar fechas seleccionadas
+                    for date, disp_value in zip(selected_dates, dispersion_values):
+                        fig_hist.add_vline(x=disp_value, line=dict(color="green", width=2, dash="solid"), 
+                                           annotation_text=f"{date.strftime('%Y-%m-%d')}\n{disp_value:.2f}%", 
+                                           annotation_position="top", annotation=dict(textangle=-90, font=dict(color="green")))
+                    fig_hist.add_annotation(text="MTaurus. X: mtaurus_ok", xref="paper", yref="paper", x=0.95, y=0.05, 
+                                            showarrow=False, font=dict(size=14, color="gray"), opacity=0.5)
                     fig_hist.update_layout(
                         title=f'Histograma del Porcentaje de Dispersión de {ticker} ({compression})',
-                        xaxis_title='Dispersión (%)', yaxis_title='Frecuencia', bargap=0.1, template="plotly_dark", hovermode="x unified"
+                        xaxis_title='Dispersión (%)', yaxis_title='Frecuencia', bargap=0.1, 
+                        template="plotly_dark", hovermode="x unified"
                     )
                     st.plotly_chart(fig_hist, use_container_width=True)
     else:
