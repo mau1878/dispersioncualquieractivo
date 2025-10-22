@@ -2,10 +2,15 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objs as go
+import seaborn as sns
+import matplotlib.pyplot as plt
 import numpy as np
 
 # Configuración de la página
 st.set_page_config(page_title="Análisis de Medias Móviles", layout="wide", initial_sidebar_state="expanded")
+
+# Configurar backend de Matplotlib para Streamlit
+plt.switch_backend('agg')
 
 # Función para descargar y comprimir datos
 @st.cache_data
@@ -198,10 +203,70 @@ with tab1:
                         fig_disp.add_hline(y=high_val, line_dash="dash", line_color="#98df8a", annotation_text=f"P95: {high_val:.2f}%")
                     fig_disp.update_layout(title=f"Dispersión de {ticker}", xaxis_title="Fecha", yaxis_title="Dispersión (%)", template="plotly_dark", showlegend=True)
                     st.plotly_chart(fig_disp, use_container_width=True)
+                    
+                    # Histograma Seaborn
+                    st.subheader(f"Histograma de Dispersión con Percentiles ({compression})")
+                    percentiles = [95, 85, 75, 50, 25, 15, 5]
+                    percentile_values = np.percentile(disp_data, percentiles) if not disp_data.empty else []
+                    
+                    # Selección de fechas
+                    num_dates = st.number_input("Fechas a destacar", min_value=0, max_value=10, value=0, key="num_dates_hist")
+                    selected_dates = []
+                    dispersion_values = []
+                    if num_dates > 0:
+                        for i in range(num_dates):
+                            date = st.date_input(
+                                f"Fecha {i+1}", value=data.index[-1], min_value=data.index[0], max_value=data.index[-1], key=f"hist_date_{i}"
+                            )
+                            date = pd.to_datetime(date)
+                            if date in data.index:
+                                disp_value = data.loc[date, 'Dispersion_%']
+                                if not pd.isna(disp_value):
+                                    selected_dates.append(date)
+                                    dispersion_values.append(disp_value)
+                                else:
+                                    st.warning(f"No hay datos de dispersión para {date.strftime('%Y-%m-%d')}.")
+                            else:
+                                st.warning(f"Fecha {date.strftime('%Y-%m-%d')} fuera de rango.")
+                    
+                    if not disp_data.empty:
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        sns.histplot(disp_data, kde=True, color='blue', bins=100, ax=ax)
+                        for percentile, value in zip(percentiles, percentile_values):
+                            ax.axvline(value, color='red', linestyle='--')
+                            ax.text(value, ax.get_ylim()[1] * 0.9, f'{percentile}º', color='red', rotation='vertical', verticalalignment='center', horizontalalignment='right')
+                        for date, disp_value in zip(selected_dates, dispersion_values):
+                            ax.axvline(disp_value, color='green', linestyle='-', alpha=0.5)
+                            ax.text(disp_value, ax.get_ylim()[1] * 0.95, f"{date.strftime('%Y-%m-%d')}\n{disp_value:.2f}%", 
+                                    color='green', rotation='vertical', verticalalignment='center', horizontalalignment='left')
+                        ax.set_title(f'Dispersión de {ticker} ({compression}) desde {ma_type} de {ma_window} períodos')
+                        ax.set_xlabel('Dispersión (%)')
+                        ax.set_ylabel('Frecuencia')
+                        plt.tight_layout()
+                        st.pyplot(fig)
+                        plt.close(fig)
+                    else:
+                        st.error("No hay datos de dispersión para graficar.")
+                    
+                    # Histograma Plotly personalizable
+                    st.subheader(f"Histograma Personalizable ({compression})")
+                    num_bins = st.slider("Bins", 10, 100, 50, key="bins_original")
+                    hist_color = st.color_picker("Color del histograma", value='#1f77b4', key="color_original")
+                    if not disp_data.empty:
+                        fig_hist = go.Figure()
+                        fig_hist.add_trace(go.Histogram(x=disp_data, nbinsx=num_bins, marker_color=hist_color, opacity=0.75, name="Histograma"))
+                        for percentile, value in zip(percentiles, percentile_values):
+                            fig_hist.add_vline(x=value, line=dict(color="red", width=2, dash="dash"), annotation_text=f'{percentile}º', annotation_position="top", annotation=dict(textangle=-90, font=dict(color="red")))
+                        for date, disp_value in zip(selected_dates, dispersion_values):
+                            fig_hist.add_vline(x=disp_value, line=dict(color="green", width=2, dash="solid"), annotation_text=f"{date.strftime('%Y-%m-%d')}\n{disp_value:.2f}%", annotation_position="top", annotation=dict(textangle=-90, font=dict(color="green")))
+                        fig_hist.update_layout(title=f'Histograma de Dispersión de {ticker} ({compression})', xaxis_title='Dispersión (%)', yaxis_title='Frecuencia', template="plotly_dark", showlegend=True)
+                        st.plotly_chart(fig_hist, use_container_width=True)
+                    else:
+                        st.error("No hay datos de dispersión para graficar.")
 
 # Tab 2: Análisis de Trading
 with tab2:
-    st.markdown("Evalúa señales de compra/venta basadas en dispersión extrema respecto a medias móviles, usando retornos a plazo fijo (no máximo/mínimo).")
+    st.markdown("Evalúa señales de compra/venta basadas en dispersión extrema respecto a medias móviles, usando retornos a plazo fijo.")
     ticker_ma = st.text_input("Ticker", value="AAPL", key="ticker_ma").upper()
     if ticker_ma:
         with st.expander("Configuración de Estrategia"):
